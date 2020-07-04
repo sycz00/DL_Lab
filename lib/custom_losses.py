@@ -132,10 +132,10 @@ class Metric_Loss(nn.Module):
 
             J_all.append(J_ij) 
 
-        
+        P_len = len(J_all)
         J_all = torch.stack(J_all)
         
-        loss = torch.mean(F.relu(J_all)**2) * 0.5 #removed F.relu inside mean
+        loss = torch.mean((F.relu(J_all)**2)/(2*P_len))#torch.mean(F.relu(J_all)**2) #* 0.5 #removed F.relu inside mean
     
         return loss 
 
@@ -197,11 +197,11 @@ class Metric_Loss(nn.Module):
         ## TT loss 
         ##############################################################
         embeddings = text_embeddings  
-        #metric_tt_loss= self.smoothed_metric_loss(embeddings, self.cur_margin) 
+        metric_tt_loss= self.smoothed_metric_loss(embeddings, self.cur_margin) 
         #targets = Variable(torch.IntTensor([i // 2 for i in range(embeddings.size(0))])).cuda()
         #loss_TT, _, _, _ = self.test_loss(embeddings,targets)
-        loss_TT = self.lifted_loss(embeddings)
-        print(loss_TT)
+        #loss_TT = self.lifted_loss(embeddings)
+        #print(loss_TT)
 
         mask_ndarray = np.asarray([1., 0.] * (self.batch_size//2))[:, np.newaxis] #[0,1,0,1,0,1] shape[200,1]
         
@@ -213,21 +213,21 @@ class Metric_Loss(nn.Module):
         # text_1_emb, shape_emb_1, ..., text_N_emb, shape_emb_N (the consective two are the same label)
         # therefore we neglect the half of the captions. 
         # thus using again the second text embedding to include both captions per shape.       
-        embeddings_1 = text_embeddings * mask + shape_embeddings_rep * inverted_mask
-        embeddings_2 = text_embeddings * inverted_mask + shape_embeddings_rep * mask
-        embeddings = torch.cat([embeddings_1,embeddings_2],axis=0)
+        embeddings = text_embeddings * mask + shape_embeddings_rep * inverted_mask
+        #embeddings_2 = text_embeddings * inverted_mask + shape_embeddings_rep * mask
+        #embeddings = torch.cat([embeddings_1,embeddings_2],axis=0)
         
        
         self.batch_size = embeddings.size(0)
-        #metric_st_loss = self.smoothed_metric_loss(embeddings,self.cur_margin)
+        metric_st_loss = self.smoothed_metric_loss(embeddings,self.cur_margin)
         #targets = Variable(torch.IntTensor([i // 2 for i in range(embeddings.size(0))])).cuda()
         #loss_ST, _, _, _ = self.test_loss(embeddings,targets)
-        loss_ST = self.lifted_loss(embeddings)
-        print(loss_ST)
+        #loss_ST = self.lifted_loss(embeddings)
+        #print(loss_ST)
         # embeddings = text_embeddings * inverted_mask + shape_embeddings_rep * mask
         # metric_ts_loss = self.smoothed_metric_loss(embeddings, name='smoothed_metric_loss_ts', margin=cur_margin)
-        Total_loss = loss_ST + loss_TT
-        #Total_loss = metric_tt_loss +  metric_st_loss
+        #Total_loss = loss_ST + loss_TT
+        Total_loss = metric_tt_loss +  metric_st_loss
 
 
         if self.LBA_normalized is False:  # Add a penalty on the embedding norms
