@@ -21,7 +21,6 @@ from models.Encoders import CNNRNNTextEncoder, ShapeEncoder
 from multiprocessing import Process, Event 
 import time
 
-MODEL = {'Text_Encoder': CNNRNNTextEncoder, 'Shape_Encoder': ShapeEncoder}   
 
 def kill_processes(queue, processes): 
     print('signal processes to shutdown')
@@ -52,7 +51,8 @@ def make_data_processes(data_process_class, queue, data_paths, opts, repeat):
         processes.append(process) 
 
     return processes 
-
+def val():
+    return 0
 def main():
    
     
@@ -95,8 +95,8 @@ def main():
     #val_processes = make_data_processes(val_data_process_for_class, val_queue, val_inputs_dict, opts, repeat=True)
 
     
-    text_encoder = MODEL['Text_Encoder'](vocab_size=inputs_dict['vocab_size']).cuda()
-    shape_encoder = MODEL['Shape_Encoder']().cuda()
+    text_encoder = CNNRNNTextEncoder(vocab_size=inputs_dict['vocab_size']).cuda()
+    shape_encoder = ShapeEncoder().cuda()
 
 
     
@@ -119,7 +119,6 @@ def main():
             minibatch = train_queue.get()
             #kill_processes(train_queue, train_processes)
             raw_embedding_batch = torch.from_numpy(minibatch['raw_embedding_batch']).long().cuda()#torch.Size([batch_size*2, 96])
-            #caption_labels_batch = torch.from_numpy(minibatch['caption_label_batch']).long().cuda() #torch.Size([batch_size*2])
             shape_batch = torch.from_numpy(minibatch['voxel_tensor_batch']).permute(0,4,1,2,3).cuda() #torch.Size([batch_size,4,32,32,32])
             text_encoder_outputs = text_encoder(raw_embedding_batch)
             shape_encoder_outputs = shape_encoder(shape_batch)

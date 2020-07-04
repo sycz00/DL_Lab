@@ -6,7 +6,7 @@ import torch.nn.functional as F
 
 class CNNRNNTextEncoder(nn.Module):
 
-    def __init__(self, vocab_size,embedding_size=128,normalize=True):
+    def __init__(self, vocab_size,embedding_size=128,normalize=False):
 
         super(CNNRNNTextEncoder,self).__init__()
         self.normalize = normalize
@@ -57,7 +57,7 @@ class CNNRNNTextEncoder(nn.Module):
 
 
 class ShapeEncoder(nn.Module):
-    def __init__(self,num_channel=4,num_classes=2,normalize=True):
+    def __init__(self,num_channel=4,num_classes=2,normalize=False):
         super(ShapeEncoder, self).__init__()
 
         self.normalize = normalize
