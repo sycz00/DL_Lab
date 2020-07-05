@@ -20,6 +20,7 @@ from lib.data_process_encoder import LBADataProcess
 from models.Encoders import CNNRNNTextEncoder, ShapeEncoder
 from multiprocessing import Process, Event 
 import time
+from torch.utils.tensorboard import SummaryWriter
 
 
 def kill_processes(queue, processes): 
@@ -51,8 +52,34 @@ def make_data_processes(data_process_class, queue, data_paths, opts, repeat):
         processes.append(process) 
 
     return processes 
-def val():
-    return 0
+
+def accuracy(X,Y):
+    bsz = X.size(0)
+    err_1 = ((X[:bsz//2]-Y)**2).sum(axis=0)
+    err_2 = ((X[bsz//2:bsz]-Y)**2).sum(axis=0)
+    return err_1+err_2
+
+def val(val_que,val_proces, text_encoder, shape_encoder,loss):
+    min_batch = val_process[0].iters_per_epoch
+    losses = []
+    text_encoder.eval() 
+    shape_encoder.eval()
+    acc = []
+    for i in range(min_batch):
+        val_data = val_queue.get()
+        
+        raw_embedding_batch = torch.from_numpy(minibatch['raw_embedding_batch']).long().cuda()#torch.Size([batch_size*2, 96])
+        shape_batch = torch.from_numpy(minibatch['voxel_tensor_batch']).permute(0,4,1,2,3).cuda() #torch.Size([batch_size,4,32,32,32])
+        text_encoder_outputs = text_encoder(raw_embedding_batch)
+        shape_encoder_outputs = shape_encoder(shape_batch)
+        metric_loss = loss(text_encoder_outputs, shape_encoder_outputs)
+        losses.append(metric_loss)
+
+
+    return np.mean(np.array(losses)), 0
+
+        
+    
 def main():
    
     
@@ -68,24 +95,27 @@ def main():
     opts.LBA_cosin_dist = cfg.LBA.COSINE_DIST
     opts.rho = cfg.LBA.METRIC_MULTIPLIER
     opts.learning_rate = cfg.TRAIN.LEARNING_RATE
+    #writer = SummaryWriter('/logs/')
 
     #we basiaclly neglectthe problematic ones later in the dataloader
     opts.probablematic_nrrd_path = cfg.DIR.PROBLEMATIC_NRRD_PATH
     print('----------------- CONFIG -------------------')
-    #pprint.pprint(cfg)
 
     
-    #SHAPENET DATASET 
-    inputs_dict = utils.open_pickle(cfg.DIR.TRAIN_DATA_PATH)#PRIMITIVES_TRAIN_DATA_PATH)#) #processed_captions_train.p
-    val_inputs_dict = utils.open_pickle(cfg.DIR.VAL_DATA_PATH)#PRIMITIVES_VAL_DATA_PATH)#processed_captions_val.p
-    test_inputs_dict = utils.open_pickle(cfg.DIR.TEST_DATA_PATH)#PRIMITIVES_TEST_DATA_PATH)#processed_captions_test.p
+    
 
+    inputs_dict = utils.open_pickle(cfg.DIR.TRAIN_DATA_PATH) #processed_captions_train.p
+    val_inputs_dict = utils.open_pickle(cfg.DIR.VAL_DATA_PATH)#processed_captions_val.p
+    test_inputs_dict = utils.open_pickle(cfg.DIR.TEST_DATA_PATH)#processed_captions_test.p
+    
+    
     data_process_for_class = LBADataProcess
     val_data_process_for_class = LBADataProcess
    
     global train_queue, train_processes 
     global val_queue, val_processes 
     queue_capacity = cfg.CONST.QUEUE_CAPACITY 
+    queue_capacity = 20
     train_queue = Queue(queue_capacity)
     
     
@@ -97,45 +127,47 @@ def main():
     
     text_encoder = CNNRNNTextEncoder(vocab_size=inputs_dict['vocab_size']).cuda()
     shape_encoder = ShapeEncoder().cuda()
-
-
     
-    #LBA_loss = LBA_Loss(lmbda=0.25, LBA_model_type=opts.LBA_model_type, batch_size=opts.batch_size)
-
+    loss = Metric_Loss(opts, LBA_inverted_loss=cfg.LBA.INVERTED_LOSS, LBA_normalized=cfg.LBA.NORMALIZE, LBA_max_norm=cfg.LBA.MAX_NORM)
     
-    
-    Metric_loss = Metric_Loss(opts, LBA_inverted_loss=cfg.LBA.INVERTED_LOSS, LBA_normalized=cfg.LBA.NORMALIZE, LBA_max_norm=cfg.LBA.MAX_NORM)
-    
-
-    
-    optimizer_text_encoder = optim.Adam(text_encoder.parameters(), lr=opts.learning_rate, weight_decay=cfg.TRAIN.DECAY_RATE) 
-    optimizer_shape_encoder = optim.Adam(shape_encoder.parameters(), lr=opts.learning_rate,weight_decay=cfg.TRAIN.DECAY_RATE) 
+    optimizer_text_encoder = optim.Adam(text_encoder.parameters(), lr=cfg.TRAIN.LEARNING_RATE)#, weight_decay=cfg.TRAIN.DECAY_RATE) 
+    optimizer_shape_encoder = optim.Adam(shape_encoder.parameters(), lr=cfg.TRAIN.LEARNING_RATE)#,weight_decay=cfg.TRAIN.DECAY_RATE) 
 
     min_batch = train_processes[0].iters_per_epoch
-    
+    text_encoder.train() 
+    shape_encoder.train()
+
     for epoch in range(1000):
         print("NEW EPOCH")
+        
         for i in range(min_batch):
             minibatch = train_queue.get()
-            #kill_processes(train_queue, train_processes)
+
             raw_embedding_batch = torch.from_numpy(minibatch['raw_embedding_batch']).long().cuda()#torch.Size([batch_size*2, 96])
+            
             shape_batch = torch.from_numpy(minibatch['voxel_tensor_batch']).permute(0,4,1,2,3).cuda() #torch.Size([batch_size,4,32,32,32])
+            
             text_encoder_outputs = text_encoder(raw_embedding_batch)
             shape_encoder_outputs = shape_encoder(shape_batch)
-            text_encoder.train() 
-            shape_encoder.train()
-            #lba_loss, _, _ = LBA_loss(text_encoder_outputs, shape_encoder_outputs, caption_labels_batch)
-            metric_loss = Metric_loss(text_encoder_outputs, shape_encoder_outputs) 
-            loss = metric_loss#lba_loss + opts.rho *
+           
+            
+            metric_loss = loss(text_encoder_outputs, shape_encoder_outputs) 
+            
             if(i % 50 == 0):
-                print("LOSS :",loss.item())
+                print("LOSS :",metric_loss.item())
 
             optimizer_text_encoder.zero_grad() 
             optimizer_shape_encoder.zero_grad() 
-            loss.backward() 
+            metric_loss.backward() 
 
             optimizer_text_encoder.step()
             optimizer_shape_encoder.step() 
+
+        #if(epoch % 10 == 0):
+            #vall_loss,val_acc = val(val_queue,val_processes,text_encoder,shape_encoder,loss)
+
+            #text_encoder.train() 
+            #shape_encoder.train()
             
         
 

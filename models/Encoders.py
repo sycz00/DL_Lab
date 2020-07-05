@@ -36,6 +36,7 @@ class CNNRNNTextEncoder(nn.Module):
 
     def forward(self, x):
         seq_len = self.compute_sequence_length(x)
+        #print("seq length:",seq_len)
         max_seq_len = x.size(1)
         x = self.emb(x).permute(0, 2, 1)
         x = self.f1(x)
@@ -45,7 +46,7 @@ class CNNRNNTextEncoder(nn.Module):
         x= self.f4(x).permute(2, 0, 1)
         
         x, _ = self.f5(x)
-        #x = x.view(x.size(0), -1)
+        
         
         masks = (seq_len-1).unsqueeze(0).unsqueeze(2).expand(max_seq_len, x.size(1), x.size(2))
         x = x.gather(0, masks)[0]
@@ -83,14 +84,13 @@ class ShapeEncoder(nn.Module):
 
     def forward(self, x):
         x = self.f1(x)
-        #print(x.size())
+       
         x = self.f2(x)
-        #print(x.size())
+        
         x = self.f3(x)
-        #print(x.size())
+        
         x = self.f4(x)
-        #print(x.size())
-        #x = self.cnn_base(x)
+        
         x = x.view(x.size(0), -1)
         x = F.softmax(self.classifier(x), dim=1)
         if(self.normalize):
