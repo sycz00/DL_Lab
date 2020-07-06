@@ -60,20 +60,35 @@ def accuracy(X,Y):
     return err_1+err_2
 
 def val(val_que,val_proces, text_encoder, shape_encoder,loss):
-    min_batch = val_process[0].iters_per_epoch
+    iterations = val_process[0].iters_per_epoch
     losses = []
     text_encoder.eval() 
     shape_encoder.eval()
     acc = []
-    for i in range(min_batch):
-        val_data = val_queue.get()
+    for i in range(iterations):
+        minibatch = val_queue.get()
         
         raw_embedding_batch = torch.from_numpy(minibatch['raw_embedding_batch']).long().cuda()#torch.Size([batch_size*2, 96])
         shape_batch = torch.from_numpy(minibatch['voxel_tensor_batch']).permute(0,4,1,2,3).cuda() #torch.Size([batch_size,4,32,32,32])
+        caption_labels_batch = torch.from_numpy(minibatch['caption_label_batch']).long()
+        shape_category_batch = minibatch['category_list']
+
+        ###################
+        
+
+        #metric_loss = loss(text_encoder_outputs, shape_encoder_outputs)
+
+        #losses.append(metric_loss)
+        minibatch_save = {
+            "raw_embedding_batch": raw_embedding_batch.data.cpu(),
+            'caption_labels_batch': caption_labels_batch.data.cpu(),
+            'category_list': shape_category_batch,
+            'model_list': minibatch['model_list']
+        }
+
+
         text_encoder_outputs = text_encoder(raw_embedding_batch)
         shape_encoder_outputs = shape_encoder(shape_batch)
-        metric_loss = loss(text_encoder_outputs, shape_encoder_outputs)
-        losses.append(metric_loss)
 
 
     return np.mean(np.array(losses)), 0

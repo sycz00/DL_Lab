@@ -34,7 +34,7 @@ class Metric_Loss(nn.Module):
         #if LBA_inverted_loss is True: 
         #self.cur_margin = 1.0 
         #else: 
-        self.cur_margin = 1.0 
+        self.cur_margin = 0.5 
 
         ################################################
         ## should we specify the self.text_norm_weight and self.shape_norm_weight 
@@ -79,16 +79,16 @@ class Metric_Loss(nn.Module):
         m = margin 
 
         #mahanaobis distance instead of simple dot product
-        magnitude = (input_tensor ** 2).sum(1).expand(self.batch_size, self.batch_size)
-        squared_matrix = input_tensor.mm(torch.t(input_tensor))
-        D = F.relu(magnitude + torch.t(magnitude) - 2 * squared_matrix).sqrt()#mahalanobis_distances
+        #magnitude = (input_tensor ** 2).sum(1).expand(self.batch_size, self.batch_size)
+        #squared_matrix = input_tensor.mm(torch.t(input_tensor))
+        #D = F.relu(magnitude + torch.t(magnitude) - 2 * squared_matrix).sqrt()#mahalanobis_distances
         #if self.LBA_cosin_dist is True: 
             #assert (self.LBA_normalized is True) or (self.LBA_inverted_loss is True) 
             #assert (self.LBA_normalized is True) and (margin < 1) or (self.LBA_inverted_loss is True)
 
-            #D = self.cosine_similarity(X, X) #the m_i_j in the equation 2
+        D = self.cosine_similarity(X, X) #the m_i_j in the equation 2
            
-        expmD = torch.exp(m - D)
+        expmD = torch.exp(m + D)
 
         # compute the loss 
         # assume that the input data is aligned in a way that two consective data form a pair 
@@ -115,9 +115,9 @@ class Metric_Loss(nn.Module):
 
             neg_inds = [neg_row_ids, neg_col_ids]
 
-            J_ij = torch.log(torch.sum(expmD[neg_inds])) + D[i, j]
+            J_ij = torch.square(torch.log(torch.sum(expmD[neg_inds])) - D[i, j])
 
-            J_all += torch.square(F.relu(J_ij)) 
+            J_all += J_ij #torch.square(F.relu(J_ij)) 
             counter += 1 
 
 
