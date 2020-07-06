@@ -115,7 +115,7 @@ def main():
     global train_queue, train_processes 
     global val_queue, val_processes 
     queue_capacity = cfg.CONST.QUEUE_CAPACITY 
-    queue_capacity = 20
+    #queue_capacity = 20
     train_queue = Queue(queue_capacity)
     
     
@@ -139,7 +139,7 @@ def main():
 
     for epoch in range(1000):
         print("NEW EPOCH")
-        
+        epoch_loss = []
         for i in range(min_batch):
             minibatch = train_queue.get()
 
@@ -152,9 +152,9 @@ def main():
            
             
             metric_loss = loss(text_encoder_outputs, shape_encoder_outputs) 
+            epoch_loss.append(metric_loss.item())
             
-            if(i % 50 == 0):
-                print("LOSS :",metric_loss.item())
+                
 
             optimizer_text_encoder.zero_grad() 
             optimizer_shape_encoder.zero_grad() 
@@ -162,6 +162,7 @@ def main():
 
             optimizer_text_encoder.step()
             optimizer_shape_encoder.step() 
+        print("LOSS",np.mean(epoch_loss))
 
         #if(epoch % 10 == 0):
             #vall_loss,val_acc = val(val_queue,val_processes,text_encoder,shape_encoder,loss)

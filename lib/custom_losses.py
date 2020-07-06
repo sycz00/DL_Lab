@@ -40,14 +40,11 @@ class Metric_Loss(nn.Module):
         ## should we specify the self.text_norm_weight and self.shape_norm_weight 
         ## here we add a penalty on the embedding norms  
         ################################################
-        if LBA_max_norm is not None: 
-            self.LBA_max_norm = LBA_max_norm
-            self.text_norm_weight = 2.0 #as used in the official implementation
-            self.shape_norm_weight = 2.0 ##as used in the official implementation
-        else: # default value 
-            self.LBA_max_norm = LBA_max_norm
-            self.text_norm_weight = 2.0 
-            self.shape_norm_weight = 2.0 
+        
+        self.LBA_max_norm = LBA_max_norm
+        self.text_norm_weight = 2.0 #as used in the official implementation
+        self.shape_norm_weight = 2.0 ##as used in the official implementation
+        
 
 
         
@@ -81,11 +78,15 @@ class Metric_Loss(nn.Module):
         X = input_tensor # N x emb_size 
         m = margin 
 
-        if self.LBA_cosin_dist is True: 
+        #mahanaobis distance instead of simple dot product
+        magnitude = (input_tensor ** 2).sum(1).expand(self.batch_size, self.batch_size)
+        squared_matrix = input_tensor.mm(torch.t(input_tensor))
+        D = F.relu(magnitude + torch.t(magnitude) - 2 * squared_matrix).sqrt()#mahalanobis_distances
+        #if self.LBA_cosin_dist is True: 
             #assert (self.LBA_normalized is True) or (self.LBA_inverted_loss is True) 
             #assert (self.LBA_normalized is True) and (margin < 1) or (self.LBA_inverted_loss is True)
 
-            D = self.cosine_similarity(X, X) #the m_i_j in the equation 2
+            #D = self.cosine_similarity(X, X) #the m_i_j in the equation 2
            
         expmD = torch.exp(m - D)
 
@@ -93,7 +94,8 @@ class Metric_Loss(nn.Module):
         # assume that the input data is aligned in a way that two consective data form a pair 
 
         
-        J_all = [] 
+        J_all = 0#Variable(torch.zeros(1), requires_grad=True)
+        counter = 0 
         for pair_ind in range(self.batch_size//2): 
             i = pair_ind * 2 # 0, 2, 4, ...
             j = i + 1 # j is the postive of i 
@@ -115,13 +117,15 @@ class Metric_Loss(nn.Module):
 
             J_ij = torch.log(torch.sum(expmD[neg_inds])) + D[i, j]
 
-            J_all.append(J_ij) 
+            J_all += torch.square(F.relu(J_ij)) 
+            counter += 1 
 
-        P_len = len(J_all)
-        J_all = torch.stack(J_all)
+
+        #P_len = len(J_all)
+        #J_all = torch.stack(J_all)
         
-        loss = torch.mean((F.relu(J_all)**2))*0.5 #mean represents |P| and therefore only 1/2 remains to be multiplied with 
-    
+        #loss = torch.mean((F.relu(J_all)**2))*0.5 #mean represents |P| and therefore only 1/2 remains to be multiplied with 
+        loss = J_all/(2*counter)
         return loss 
 
     
