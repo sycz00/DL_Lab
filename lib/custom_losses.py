@@ -12,18 +12,6 @@ from torch.autograd import Variable
 ## Metric loss 
 ###################################################################
 
-class TripletLoss(nn.Module):
-    
-    def __init__(self, margin):
-        super(TripletLoss, self).__init__()
-        self.margin = margin
-
-    def forward(self, anchor, positive, negative, size_average=False):
-        distance_positive = (anchor - positive).pow(2).sum()  # .pow(.5)
-        distance_negative = (anchor - negative).pow(2).sum()  # .pow(.5)
-        losses = F.relu(distance_positive - distance_negative + self.margin)
-        return losses.mean() if size_average else losses.sum()
-
 
 class Metric_Loss(nn.Module):
     """
@@ -46,7 +34,7 @@ class Metric_Loss(nn.Module):
         #if LBA_inverted_loss is True: 
         #self.cur_margin = 1.0 
         #else: 
-        self.cur_margin = 1.0
+        self.cur_margin = 0.5
 
         ################################################
         ## should we specify the self.text_norm_weight and self.shape_norm_weight 
@@ -126,6 +114,7 @@ class Metric_Loss(nn.Module):
         
         #loss = torch.mean((F.relu(J_all)**2))*0.5 #mean represents |P| and therefore only 1/2 remains to be multiplied with 
         loss = J_all/(2*counter)
+        #print(loss)
         return loss 
 
     
@@ -170,18 +159,10 @@ class Metric_Loss(nn.Module):
         #targets = Variable(torch.IntTensor([i // 2 for i in range(embeddings.size(0))])).cuda()
         #loss_ST, _, _, _ = self.test_loss(embeddings,targets)
         #loss_ST = self.lifted_loss(embeddings)
+        #print("m1",metric_tt_loss)
+        #print("m2",metric_st_loss)
         Total_loss = metric_tt_loss +  metric_st_loss
+       
         
-        text_norms = torch.norm(text_embeddings, p=2, dim=1)
-        unweighted_txt_loss = torch.mean(F.relu(text_norms - self.LBA_max_norm))
-        shape_norms = torch.norm(shape_embeddings, p=2, dim=1)
-        unweighted_shape_loss = torch.mean(F.relu(shape_norms - self.LBA_max_norm))
-        Total_loss_with_norm = Total_loss + self.text_norm_weight * unweighted_txt_loss + self.shape_norm_weight * unweighted_shape_loss
-        
-        
-        
-
        
         return Total_loss 
-
- 
