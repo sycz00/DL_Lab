@@ -111,8 +111,7 @@ class LBADataProcess(Process):#DataProcess
         model_id = caption_tuples_for_cur_key[0][2] 
         for tup in caption_tuples_for_cur_key: 
             assert tup[1] == category
-            if self.opts.dataset == 'shapenet':
-                assert tup[2] == model_id
+            assert tup[2] == model_id
 
         return category, model_id
 
@@ -191,7 +190,7 @@ class LBADataProcess(Process):#DataProcess
                 #model_id_list.append(cur_model_id) 
                 #elif self.opts.LBA_model_type == 'TST' or self.opts.LBA_model_type == 'MM': 
                 cur_categories = [cur_category for _ in selected_captions] # 复制label self.n_captions_per_model次
-                cur_model_ids = [cur_model_id for _ in selected_captions] # 复制model_id self.n_captions_per_model次
+                cur_model_ids = [cur_model_id]# for _ in selected_captions] # 复制model_id self.n_captions_per_model次
                 category_list.extend(cur_categories)
                 model_id_list.extend(cur_model_ids) 
                 #else:

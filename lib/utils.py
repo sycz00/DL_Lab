@@ -259,49 +259,30 @@ def consolidate_caption_tuples(minibatch_list, outputs_list, opts, embedding_typ
         category_list = minibatch['category_list']
         model_list = minibatch['model_list']
         for i in range(captions_tensor.shape[0]):
-            if embedding_type == 'shape':
-                caption = None
+            
+            caption = captions_tensor[i]
+           
+            category = category_list[i]
+            model_id = model_list[i]
+            
+            #perhaps some rework needed such that we get all text and shape embeddings without skipping some of them
+            if (model_id in seen_shapes):
+                continue
             else:
-                caption = captions_tensor[i]
-            
-            if opts.LBA_model_type == 'STS':    
-                category = category_list[int(np.floor(i/2))]
-            else: 
-                category = category_list[i]
-            
-            if opts.LBA_model_type == 'STS': 
-                model_id = model_list[int(np.floor(i/2))]
-            else: 
-                model_id = model_list[i]
-                
-            if embedding_type == 'text':
                 caption_embedding_as_tuple = tuple(caption.tolist())
-                if not opts.test_all_tuples and (caption_embedding_as_tuple in seen_text):
+                if (caption_embedding_as_tuple in seen_text):
                     continue
-                else:
-                    # get caption embedding at index i from the outputs dict 
-                    if i is not None: 
-                        caption_embedding = outputs['text_encoder'][i] 
-                    else: 
-                        caption_embedding = outputs['text_encoder']
+                caption_embedding = outputs['text_encoder'][i]
+                shape_embedding = outputs['shape_encoder'][i//2]
+                seen_shapes.append(model_id)
+                seen_text.append(caption_embedding_as_tuple)       
+            
 
-                    seen_text.append(caption_embedding_as_tuple)
-            elif embedding_type == 'shape': 
-                if not opts.test_all_tuples and (model_id in seen_shapes):
-                    continue
-                else:
-                    ### get the shape embedding at index i from the outputs dict. This is None for the generic text
-                    ### text encoder (which does not learn shape embeddings) 
-                    # pdb.set_trace() 
-                    if i is not None: 
-                        caption_embedding = outputs['shape_encoder'][i] 
-                    else: 
-                        caption_embedding = outputs['shape_encoder'] 
-                    seen_shapes.append(model_id)
-            else:
-                return ValueError('Please use a valid embedding type (text or shape).')
+            
             
             caption_tuple = (caption, category, model_id, caption_embedding)
+            caption_tuples.append(caption_tuple)
+            caption_tuple = (caption, category, model_id, shape_embedding)
             caption_tuples.append(caption_tuple)
 
     return caption_tuples
@@ -371,28 +352,23 @@ def construct_embeddings_matrix(dataset, embeddings_dict, model_id_to_label=None
     embedding_sample = embeddings_dict['caption_embedding_tuples'][0][3]
     embedding_dim = embedding_sample.shape[0]
     num_embeddings = embeddings_dict['dataset_size']
-    if (dataset == 'shapenet') and (num_embeddings > 30000):
-        raise ValueError('Too many ({}) embeddings. Only use up to 30000.'.format(num_embeddings))
-    assert embedding_sample.dim() == 1
+    
 
     # Print info about embeddings
     print('Number of embeddings:', num_embeddings)
     print('Dimensionality of embedding:', embedding_dim)
-    print('Estimated size of embedding matrix (GB):',
-          embedding_dim * num_embeddings * 4 / 1024 / 1024 / 1024)
-    print('')
+    
 
     # Create embeddings matrix (n_samples x n_features) and vector of labels
     embeddings_matrix = torch.zeros((num_embeddings, embedding_dim))
     labels = torch.zeros((num_embeddings))
 
-    if (model_id_to_label is None) and (label_to_model_id is None):
-        model_id_to_label = {}
-        label_to_model_id = {}
-        label_counter = 0
-        new_dicts = True
-    else:
-        new_dicts = False
+    
+    model_id_to_label = {}
+    label_to_model_id = {}
+    label_counter = 0
+    
+    
 
     for idx, caption_tuple in enumerate(embeddings_dict['caption_embedding_tuples']):
 
@@ -400,25 +376,19 @@ def construct_embeddings_matrix(dataset, embeddings_dict, model_id_to_label=None
         caption, category, model_id, embedding = caption_tuple
 
         # Swap model ID and category depending on dataset
-        if dataset == 'primitives':
-            tmp = model_id
-            model_id = category
-            category = tmp
-
+    
         # Add model ID to dict if it has not already been added
-        if new_dicts:
-            if model_id not in model_id_to_label:
-                model_id_to_label[model_id] = label_counter
-                label_to_model_id[label_counter] = model_id
-                label_counter += 1
+        
+        if model_id not in model_id_to_label:
+            model_id_to_label[model_id] = label_counter
+            label_to_model_id[label_counter] = model_id
+            label_counter += 1
 
         # Update the embeddings matrix and labels vector
         embeddings_matrix[idx] = embedding
         labels[idx] = model_id_to_label[model_id]
 
-        # Print progress
-        if (idx + 1) % 10000 == 0:
-            print('Processed {} / {} embeddings'.format(idx + 1, num_embeddings))
+        
     return embeddings_matrix, labels, model_id_to_label, num_embeddings, label_to_model_id
 
 def print_model_id_info(model_id_to_label):
@@ -467,7 +437,7 @@ def _compute_nearest_neighbors_cosine(fit_embeddings_matrix, query_embeddings_ma
     # is on the right
     indices = sort_indices[:, -n_neighbors:]
     # [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, ...., 29999, .., 2999]
-    row_indices = [x for x in range(n_samples) for _ in range(n_neighbors)]
+    row_indices = [x for x in range(n_samples) for _ in range(n_neighbors)] #[0,0,1,1,2,2,3,3,...]
     # take out nearest n_neighbors elements
     yo = unnormalized_similarities[row_indices, indices.flatten()].reshape(n_samples, n_neighbors)
     indices = indices[row_indices, np.argsort(yo, axis=1).flatten()].reshape(n_samples, n_neighbors)
@@ -493,50 +463,10 @@ def _compute_nearest_neighbors_cosine(fit_embeddings_matrix, query_embeddings_ma
 
 def compute_nearest_neighbors_cosine(fit_embeddings_matrix, query_embeddings_matrix,
                                      n_neighbors, fit_eq_query):
-    print('Using unnormalized cosine distance')
-    n_samples = query_embeddings_matrix.shape[0]
-    if n_samples > 8000:  # Divide into blocks and execute
-        def block_generator(mat, block_size):
-            for i in range(0, mat.shape[0], block_size):
-                yield mat[i:(i + block_size), :]
-
-        block_size = 3000
-        blocks = block_generator(query_embeddings_matrix, block_size)
-        indices_list = []
-        for cur_block_idx, block in enumerate(blocks):
-            print('Nearest neighbors on block {}'.format(cur_block_idx + 1))
-            cur_indices = _compute_nearest_neighbors_cosine(fit_embeddings_matrix, block,
-                                                            n_neighbors, fit_eq_query,
-                                                            range_start=cur_block_idx * block_size)
-            indices_list.append(cur_indices)
-        indices = np.vstack(indices_list)
-        return None, indices
-    else:
-        return None, _compute_nearest_neighbors_cosine(fit_embeddings_matrix,
-                                                       query_embeddings_matrix, n_neighbors,
-                                                       fit_eq_query)
-
-
-def compute_nearest_neighbors(fit_embeddings_matrix, query_embeddings_matrix,
-                              n_neighbors, metric='cosine'):
-    """Compute nearest neighbors.
-    Args:
-        fit_embeddings_matrix: NxD matrix
-    """
-    fit_eq_query = False
-    # np.allclose: Returns True if two arrays are element-wise equal within a tolerance (by default, 1e-8).
-    # 
-    if ((fit_embeddings_matrix.shape == query_embeddings_matrix.shape)
-        and np.allclose(fit_embeddings_matrix, query_embeddings_matrix)):
-        fit_eq_query = True
-
-    if metric == 'cosine':
-        distances, indices = compute_nearest_neighbors_cosine(fit_embeddings_matrix,
-                                                              query_embeddings_matrix,
-                                                              n_neighbors, fit_eq_query)
-    else:
-        raise ValueError('Use cosine distance.')
-    return distances, indices
+    
+    
+    
+    return None, _compute_nearest_neighbors_cosine(fit_embeddings_matrix,query_embeddings_matrix, n_neighbors, fit_eq_query)
 
 
 def compute_pr_at_k(indices, labels, n_neighbors, num_embeddings, fit_labels=None):
@@ -572,24 +502,24 @@ def compute_pr_at_k(indices, labels, n_neighbors, num_embeddings, fit_labels=Non
             num_correct[i, k] = np.sum(correct_indicator)
 
     # Compute our dcg
-    dcg_n = np.exp2(rel_score) - 1
-    dcg_d = np.log2(np.arange(1,n_neighbors+1)+1)
-    dcg = np.cumsum(dcg_n/dcg_d,axis=1)
+    #dcg_n = np.exp2(rel_score) - 1
+    #dcg_d = np.log2(np.arange(1,n_neighbors+1)+1)
+    #dcg = np.cumsum(dcg_n/dcg_d,axis=1)
     # Compute ideal dcg
-    dcg_n_ideal = np.exp2(rel_score_ideal) - 1
-    dcg_ideal = np.cumsum(dcg_n_ideal/dcg_d,axis=1)
+    #dcg_n_ideal = np.exp2(rel_score_ideal) - 1
+    #dcg_ideal = np.cumsum(dcg_n_ideal/dcg_d,axis=1)
     # Compute ndcg
-    ndcg = dcg / dcg_ideal
-    ave_ndcg_at_k = np.sum(ndcg, axis=0) / num_embeddings
-    recall_rate_at_k = np.sum(num_correct > 0, axis=0) / num_embeddings
+    #ndcg = dcg / dcg_ideal
+    #ave_ndcg_at_k = np.sum(ndcg, axis=0) / num_embeddings
+    #recall_rate_at_k = np.sum(num_correct > 0, axis=0) / num_embeddings
     recall_at_k = np.sum(num_correct/num_relevant[:,None], axis=0) / num_embeddings
     precision_at_k = np.sum(num_correct/np.arange(1,n_neighbors+1), axis=0) / num_embeddings
     #print('recall_at_k shape:', recall_at_k.shape)
-    print('     k: precision recall recall_rate ndcg')
-    for k in range(n_neighbors):
-        print('pr @ {}: {} {} {} {}'.format(k + 1, precision_at_k[k], recall_at_k[k], recall_rate_at_k[k], ave_ndcg_at_k[k]))
-    Metrics = collections.namedtuple('Metrics', 'precision recall recall_rate ndcg')
-    return Metrics(precision_at_k, recall_at_k, recall_rate_at_k, ave_ndcg_at_k)
+    #print('     k: precision recall recall_rate ndcg')
+    #for k in range(n_neighbors):
+    #    print('pr @ {}: {} {} {} {}'.format(k + 1, precision_at_k[k], recall_at_k[k], recall_rate_at_k[k], ave_ndcg_at_k[k]))
+    Metrics = collections.namedtuple('Metrics', 'precision recall')# recall_rate ndcg')
+    return Metrics(precision_at_k, recall_at_k)#, recall_rate_at_k, ave_ndcg_at_k)
 
 
 def get_nearest_info(indices, labels, label_to_model_id, caption_tuples, idx_to_word):
@@ -706,17 +636,12 @@ def compute_metrics(embeddings_dict, opts, metric='cosine', concise=False):
     embeddings_matrix = embeddings_matrix.data.numpy() 
     labels = labels.data.numpy().astype(np.int32) 
 
-    distances, indices = compute_nearest_neighbors(embeddings_matrix, embeddings_matrix, n_neighbors, metric=metric)
-
+    #distances, indices = compute_nearest_neighbors(embeddings_matrix, embeddings_matrix, n_neighbors, metric=metric)
+    #cosine 
+    distances, indices = compute_nearest_neighbors_cosine(embeddings_matrix, embeddings_matrix, n_neighbors, fit_eq_query=True)
     print('Computing precision recall.')
     pr_at_k = compute_pr_at_k(indices, labels, n_neighbors, num_embeddings)
-    # plot_pr_curve(pr_at_k)
-
-    # Print some nearest neighbor indexes and labels (for debugging)
-    # for i in range(10):
-    #     print('Label:', labels[i])
-    #     print('Neighbor indices:', indices[i][:5])
-    #     print('Neighbors:', [labels[x] for x in indices[i][:5]])
+    
 
     if concise is False or isinstance(concise, str):
         # Opens the processed captions generated from tools/preprocess_captions.py

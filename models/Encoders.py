@@ -6,7 +6,7 @@ import torch.nn.functional as F
 
 class CNNRNNTextEncoder(nn.Module):
 
-    def __init__(self, vocab_size,embedding_size=128,normalize=True):
+    def __init__(self, vocab_size,embedding_size=128,normalize=False):
 
         super(CNNRNNTextEncoder,self).__init__()
         self.normalize = normalize
@@ -17,7 +17,7 @@ class CNNRNNTextEncoder(nn.Module):
         self.f4 = nn.Sequential(nn.Conv1d(256, 256, kernel_size=3, stride=1,padding=3//2),  nn.ReLU(),nn.BatchNorm1d(256))
         self.f5 = nn.GRU(256,256)
         self.classifier = nn.Sequential(
-            nn.Linear(256, 256),#1600
+            nn.Linear(24576, 256),#1600
             nn.ReLU(),
             nn.Linear(256, 128),
         )
@@ -46,11 +46,17 @@ class CNNRNNTextEncoder(nn.Module):
         x= self.f4(x).permute(2, 0, 1)
         
         x, _ = self.f5(x)
-        
-        
-        masks = (seq_len-1).unsqueeze(0).unsqueeze(2).expand(max_seq_len, x.size(1), x.size(2))
-        x = x.gather(0, masks)[0]
+        #print("kk:",k.size())
+        #print(x.size())
+        x = x.permute(1,0,2).contiguous()
+        #print(x.size())
+        x = x.view(x.size(0), -1)
+        #print(x.size())
+        #masks = (seq_len-1).unsqueeze(0).unsqueeze(2).expand(max_seq_len, x.size(1), x.size(2))
+        #x = x.gather(0, masks)[0]
+        #x = x.squeeze(0)
         x = self.classifier(x)
+        
         if(self.normalize):
             return F.normalize(x, p=2, dim=1)
         
@@ -58,7 +64,7 @@ class CNNRNNTextEncoder(nn.Module):
 
 
 class ShapeEncoder(nn.Module):
-    def __init__(self,num_channel=4,num_classes=2,normalize=True):
+    def __init__(self,num_channel=4,num_classes=2,normalize=False):
         super(ShapeEncoder, self).__init__()
 
         self.normalize = normalize
@@ -80,6 +86,7 @@ class ShapeEncoder(nn.Module):
         self.f4 = nn.AvgPool3d(3,stride=2)
         
         self.classifier = nn.Linear(256, 128)
+
 
 
     def forward(self, x):
