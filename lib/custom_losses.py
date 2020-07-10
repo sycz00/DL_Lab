@@ -114,7 +114,7 @@ class Metric_Loss(nn.Module):
         
         #loss = torch.mean((F.relu(J_all)**2))*0.5 #mean represents |P| and therefore only 1/2 remains to be multiplied with 
         loss = torch.mean(J_all)*0.5#J_all/(2*counter)
-        #print(loss)
+        
         return loss 
 
     

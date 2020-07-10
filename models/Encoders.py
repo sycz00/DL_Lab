@@ -6,15 +6,25 @@ import torch.nn.functional as F
 
 class CNNRNNTextEncoder(nn.Module):
 
-    def __init__(self, vocab_size,embedding_size=128,normalize=True):
+    def __init__(self, vocab_size,embedding_size=128,normalize=False):
 
         super(CNNRNNTextEncoder,self).__init__()
         self.normalize = normalize
         self.emb = nn.Embedding(vocab_size, embedding_size)
-        self.f1 = nn.Sequential(nn.Conv1d(128, 128, kernel_size=3, stride=1,padding=3//2),nn.ReLU())
-        self.f2 = nn.Sequential(nn.Conv1d(128, 128, kernel_size=3, stride=1,padding=3//2), nn.ReLU(),nn.BatchNorm1d(128))
-        self.f3 = nn.Sequential(nn.Conv1d(128, 256, kernel_size=3, stride=1,padding=3//2), nn.ReLU())
-        self.f4 = nn.Sequential(nn.Conv1d(256, 256, kernel_size=3, stride=1,padding=3//2),  nn.ReLU(),nn.BatchNorm1d(256))
+        self.f1 = nn.Sequential(
+            nn.Conv1d(128, 128, kernel_size=3, stride=1,padding=3//2),
+            nn.ReLU(),
+            nn.Conv1d(128, 128, kernel_size=3, stride=1,padding=3//2), 
+            nn.ReLU(),
+            nn.BatchNorm1d(128),
+            nn.Conv1d(128, 256, kernel_size=3, stride=1,padding=3//2), 
+            nn.ReLU(),
+            nn.Conv1d(256, 256, kernel_size=3, stride=1,padding=3//2),  
+            nn.ReLU(),
+            nn.BatchNorm1d(256)
+
+        )
+        
         self.f5 = nn.GRU(256,256)
         self.classifier = nn.Sequential(
             nn.Linear(256, 256),#24576
@@ -39,11 +49,8 @@ class CNNRNNTextEncoder(nn.Module):
         #print("seq length:",seq_len)
         max_seq_len = x.size(1)
         x = self.emb(x).permute(0, 2, 1)
-        x = self.f1(x)
-        x = self.f2(x)
-        x = self.f3(x)
+        x = self.f1(x).permute(2, 0, 1)
         
-        x= self.f4(x).permute(2, 0, 1)
         
         x, _ = self.f5(x)
         #print("kk:",k.size())
@@ -64,42 +71,41 @@ class CNNRNNTextEncoder(nn.Module):
 
 
 class ShapeEncoder(nn.Module):
-    def __init__(self,num_channel=4,num_classes=2,normalize=True):
+    def __init__(self,num_channel=4,num_classes=2,normalize=False):
         super(ShapeEncoder, self).__init__()
 
         self.normalize = normalize
         self.f1 = nn.Sequential(  
             nn.Conv3d(num_channel, 64, kernel_size=(3, 3, 3), stride=(2, 2, 2),padding=(3//2,3//2,3//2)),
             nn.BatchNorm3d(64),
-            nn.ReLU())
-
-        self.f2 = nn.Sequential(
+            nn.ReLU(),
             nn.Conv3d(64, 128, kernel_size=(3, 3, 3), stride=(2, 2, 2),padding=(3//2,3//2,3//2)), 
             nn.BatchNorm3d(128),
-            nn.ReLU())
-
-        self.f3 = nn.Sequential(
+            nn.ReLU(),
             nn.Conv3d(128, 256, kernel_size=(3, 3, 3), stride=(2, 2, 2),padding=(3//2,3//2,3//2)), 
             nn.BatchNorm3d(256),
-            nn.ReLU())
-
-        self.f4 = nn.AvgPool3d(3,stride=2)
+            nn.ReLU(),
+            nn.AvgPool3d(3,stride=2)
+            )
         
-        self.classifier = nn.Linear(256, 128)
+        
+        self.classifier = nn.Sequential(
+            nn.Linear(256, 256),#24576
+            nn.ReLU(),
+            nn.Linear(256, 128),
+        )
+        #self.classifier = nn.Linear(256, 128)
 
 
 
     def forward(self, x):
         x = self.f1(x)
        
-        x = self.f2(x)
         
-        x = self.f3(x)
-        
-        x = self.f4(x)
         
         x = x.view(x.size(0), -1)
-        x = F.softmax(self.classifier(x), dim=1)
+        #x = F.softmax(self.classifier(x), dim=1)
+        x = self.classifier(x)
         if(self.normalize):
             return F.normalize(x, p=2, dim=1)
         return x

@@ -97,7 +97,7 @@ def compute_metrics(embeddings_dict,n_neighbors = 10):
 
    	
     pr_at_k = compute_pr_at_k(indices, labels, n_neighbors, num_embeddings)
-    #print(indices)
+    
     
 
     return pr_at_k
