@@ -81,7 +81,7 @@ class Metric_Loss(nn.Module):
         # assume that the input data is aligned in a way that two consective data form a pair 
 
         
-        J_all = 0#Variable(torch.zeros(1), requires_grad=True)
+        J_all = []#Variable(torch.zeros(1), requires_grad=True)
         counter = 0 
 
         for pair_ind in range(self.batch_size//2): 
@@ -105,15 +105,15 @@ class Metric_Loss(nn.Module):
             
             J_ij = torch.square(F.relu(torch.log(torch.sum(expmD[neg_inds])) - D[i, j]))
             
-            J_all += J_ij #torch.square(F.relu(J_ij)) 
+            J_all.append(J_ij) #torch.square(F.relu(J_ij)) 
             counter += 1 
 
 
         #P_len = len(J_all)
-        #J_all = torch.stack(J_all)
+        J_all = torch.stack(J_all)
         
         #loss = torch.mean((F.relu(J_all)**2))*0.5 #mean represents |P| and therefore only 1/2 remains to be multiplied with 
-        loss = J_all/(2*counter)
+        loss = torch.mean(J_all)*0.5#J_all/(2*counter)
         #print(loss)
         return loss 
 

@@ -139,7 +139,7 @@ def construct_embeddings_matrix(embeddings_dict):
         # Swap model ID and category depending on dataset
     
         # Add model ID to dict if it has not already been added
-        
+        #We ASSUME EACH MODEL_ID (WHICH IS A SPECIFIC SHAPE) BELONG TO ITS OWN INSTANCE-LEVEL label
         if model_id not in model_id_to_label:
             model_id_to_label[model_id] = label_counter
             label_to_model_id[label_counter] = model_id

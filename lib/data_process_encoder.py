@@ -185,16 +185,12 @@ class LBADataProcess(Process):#DataProcess
                 for selected_shape in selected_shapes:  
                     shapes_list.append(selected_shape) 
 
-                #if self.opts.LBA_model_type == 'STS': 
-                #category_list.append(cur_category) 
-                #model_id_list.append(cur_model_id) 
-                #elif self.opts.LBA_model_type == 'TST' or self.opts.LBA_model_type == 'MM': 
-                cur_categories = [cur_category for _ in selected_captions] # 复制label self.n_captions_per_model次
-                cur_model_ids = [cur_model_id]# for _ in selected_captions] # 复制model_id self.n_captions_per_model次
+               
+                cur_categories = [cur_category for _ in selected_captions] 
+                cur_model_ids = [cur_model_id ]#for _ in selected_captions] 
                 category_list.extend(cur_categories)
                 model_id_list.extend(cur_model_ids) 
-                #else:
-                #    raise ValueError('Please select a valid LBA mode') 
+               
 
             # Length is the number of captions 
             # Index/label indicates which captions comes from the same shape 
@@ -210,6 +206,7 @@ class LBADataProcess(Process):#DataProcess
              
             # item in the batch_data is pytorch Tensor 
             # the following will wait until the queue frees 
+            
             batch_data = {
                 "raw_embedding_batch": batch_captions, 
                 'voxel_tensor_batch': batch_shapes, 
