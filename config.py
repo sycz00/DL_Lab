@@ -18,7 +18,7 @@ cfg = __C
 # #
 
 __C.CONST = edict()
-__C.CONST.DATASET = ''  # (shapenet, primitives) - can be modified by command line
+__C.CONST.DATASET = 'shapenet'  # (shapenet, primitives) - can be modified by command line
 #__C.CONST.IMPROVED_WGAN = False
 #__C.CONST.SHAPENET_CT_CLASSIFIER = False
 __C.CONST.SYNTH_EMBEDDING = False
@@ -42,14 +42,14 @@ __C.NETWORK = None
 #
 __C.DIR = edict()
 # Path where taxonomy.json is stored 
-__C.DIR.RGB_VOXEL_PATH = '/home/fab/dataset/nrrd_256_filter_div_32_solid/%s/%s.nrrd'  # TODO: Modify this
+__C.DIR.RGB_VOXEL_PATH = '/home/sajad/Desktop/Master_Study/Sem_2/Robot_Learning/project/Codes/data/shape_net/nrrd_256_filter_div_32_solid/%s/%s.nrrd'  # TODO: Modify this
 __C.DIR.LOG_PATH = './output/default'
 __C.DIR.CKPT_PATH = None
 __C.DIR.VAL_CKPT_PATH = None
-__C.DIR.DATA_PATH = '/home/fab/dataset/text2shape-data/'   # TODO: Modify this
+__C.DIR.DATA_PATH = '/home/sajad/Desktop/Master_Study/Sem_2/Robot_Learning/project/Codes/data/shape_net/'   # TODO: Modify this
 
 __C.DIR.SHAPENET_DATA_PATH = os.path.join(__C.DIR.DATA_PATH, 'shapenet')
-__C.DIR.RAW_CAPTION_CSV = '/home/fab/dataset/captions.tablechair.csv'  # TODO: Modify this
+__C.DIR.RAW_CAPTION_CSV = '/home/sajad/Desktop/Master_Study/Sem_2/Robot_Learning/project/Codes/data/captions.tablechair.csv'  # TODO: Modify this
 __C.DIR.PROBLEMATIC_NRRD_PATH = os.path.abspath(os.path.join(__C.DIR.SHAPENET_DATA_PATH, 'problematic_nrrds_shapenet_unverified_256_filtered_div_with_err_textures.p'))
 __C.DIR.JSON_PATH = os.path.abspath(os.path.join(__C.DIR.SHAPENET_DATA_PATH, 'shapenet.json'))
 __C.DIR.TRAIN_DATA_PATH = os.path.abspath(os.path.join(__C.DIR.SHAPENET_DATA_PATH, 'processed_captions_train.p'))

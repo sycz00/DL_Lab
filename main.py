@@ -15,6 +15,7 @@ from config import cfg
 
 import utils as utils
 import models
+from lib.custom_losses import LBA_Loss 
 from lib.custom_losses import Metric_Loss 
 from lib.data_process_encoder import LBADataProcess
 from models.Encoders import CNNRNNTextEncoder, ShapeEncoder
@@ -143,8 +144,20 @@ def main():
     text_encoder = CNNRNNTextEncoder(vocab_size=inputs_dict['vocab_size']).cuda()
     shape_encoder = ShapeEncoder().cuda()
     
+<<<<<<< Updated upstream
     loss = Metric_Loss(opts, LBA_inverted_loss=cfg.LBA.INVERTED_LOSS, LBA_normalized=cfg.LBA.NORMALIZE, LBA_max_norm=cfg.LBA.MAX_NORM)
     
+=======
+    #val(val_queue,val_processes,text_encoder,shape_encoder,opts)
+    #########################################
+    #----------------------------------------
+    #########################################    
+
+    loss1 = Metric_Loss(opts, LBA_inverted_loss=cfg.LBA.INVERTED_LOSS, LBA_normalized=cfg.LBA.NORMALIZE, LBA_max_norm=cfg.LBA.MAX_NORM)
+    loss = LBA_Loss(lmbda=0.25, LBA_model_type=cfg.LBA.MODEL_TYPE,batch_size=opts.batch_size )
+
+
+>>>>>>> Stashed changes
     optimizer_text_encoder = optim.Adam(text_encoder.parameters(), lr=cfg.TRAIN.LEARNING_RATE)#, weight_decay=cfg.TRAIN.DECAY_RATE) 
     optimizer_shape_encoder = optim.Adam(shape_encoder.parameters(), lr=cfg.TRAIN.LEARNING_RATE)#,weight_decay=cfg.TRAIN.DECAY_RATE) 
 
