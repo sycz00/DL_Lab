@@ -23,6 +23,48 @@ def pairwise_dot(x, y=None):
     return sim_mat
 
 
+def mahalanobis(x, y, cov=None):
+    x_mean = torch.mean(x)
+    Covariance = cov(torch.transpose(y,0,1))
+    inv_covmat = torch.inverse(Covariance)
+    x_minus_mn = x - x_mean
+    D_square = torch.dot(torch.dot(x_minus_mn, inv_covmat), torch.transpose(x_minus_mn,0,1))
+    return D_square 
+  
+
+def cov(m, rowvar=False):
+    '''Estimate a covariance matrix given data.
+
+    Covariance indicates the level to which two variables vary together.
+    If we examine N-dimensional samples, `X = [x_1, x_2, ... x_N]^T`,
+    then the covariance matrix element `C_{ij}` is the covariance of
+    `x_i` and `x_j`. The element `C_{ii}` is the variance of `x_i`.
+
+    Args:
+        m: A 1-D or 2-D array containing multiple variables and observations.
+            Each row of `m` represents a variable, and each column a single
+            observation of all those variables.
+        rowvar: If `rowvar` is True, then each row represents a
+            variable, with observations in the columns. Otherwise, the
+            relationship is transposed: each column represents a variable,
+            while the rows contain observations.
+
+    Returns:
+        The covariance matrix of the variables.
+    '''
+    if m.dim() > 2:
+        raise ValueError('m has more than 2 dimensions')
+    if m.dim() < 2:
+        m = m.view(1, -1)
+    if not rowvar and m.size(0) != 1:
+        m = m.t()
+    # m = m.type(torch.double)  # uncomment this line if desired
+    fact = 1.0 / (m.size(1) - 1)
+    m -= torch.mean(m, dim=1, keepdim=True)
+    mt = m.t()  # if complex: mt = m.t().conj()
+    return fact * m.matmul(mt).squeeze()
+
+
 class softCrossEntropy_v2(nn.Module):
     def __init__(self):
         super(softCrossEntropy_v2, self).__init__()
@@ -97,6 +139,8 @@ class Semisup_Loss(nn.Module):
 
         if self.lba_dist_type == 'standard':
             M = pairwise_dot(A, B) # N x M, each row i: sim(text_i, shape_1), sim(text_i, shape_2),sim(text_i, shape_3) ...
+        elif self.lba_dist_type == 'mahalanobis':
+            M = mahalanobis(A,B)
         else: 
             return ValueError('please select a valid distance type')
 
