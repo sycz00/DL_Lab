@@ -26,7 +26,7 @@ __C.CONST.N_VOX = 32
 __C.CONST.N_MINIBATCH_TEST = None  # Number of minibatches to use for test phase
 __C.CONST.BATCH_SIZE = 100
 __C.CONST.RNG_SEED = 123  # Consider removing later
-__C.CONST.NUM_WORKERS = 3
+__C.CONST.NUM_WORKERS = 1
 __C.CONST.QUEUE_CAPACITY = 20  # Maximum number of minibatches in data queue
 __C.CONST.PRINT_FREQ = 20
 __C.CONST.TEST_ALL_TUPLES = False
@@ -43,6 +43,7 @@ __C.NETWORK = None
 __C.DIR = edict()
 # Path where taxonomy.json is stored 
 __C.DIR.RGB_VOXEL_PATH = '/home/fab/dataset/nrrd_256_filter_div_32_solid/%s/%s.nrrd'  # TODO: Modify this
+__C.DIR.RGB_PNG_PATH = '/home/fab/dataset/nrrd_256_filter_div_32_solid/%s/%s.png'  # TODO: Modify this
 __C.DIR.LOG_PATH = './output/default'
 __C.DIR.CKPT_PATH = None
 __C.DIR.VAL_CKPT_PATH = None
@@ -78,10 +79,10 @@ __C.DIR.PRIMITIVES_METRIC_EMBEDDINGS_TEST = None
 # # Training
 # #
 __C.TRAIN = edict()
-__C.TRAIN.NUM_EPOCHS = 100
+__C.TRAIN.NUM_EPOCHS = 1000
 __C.TRAIN.AUGMENT_MAX = 0
 __C.TRAIN.OPTIMIZER = 'adam'
-__C.TRAIN.LEARNING_RATE = 1e-5
+__C.TRAIN.LEARNING_RATE = 1e-4
 __C.TRAIN.DECAY_STEPS = 2500
 __C.TRAIN.DECAY_RATE = 0.95
 __C.TRAIN.STAIRCASE = True
