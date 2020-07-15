@@ -6,76 +6,156 @@ import collections
 import torch 
 
 from sklearn.neighbors import NearestNeighbors,KDTree
-def consolidate_caption_tuples(minibatch_list, outputs_list, opts, embedding_type='text'):
-    """
-    From a list of tuples which each have the form: 
-    (caption, category, model_id, caption_embedding) 
-    """
-    caption_tuples = []
-    seen_text = []
-    seen_shapes = []
+from lib.utils import load_voxel
 
+
+#generates output for caption and shape embeddings
+def TS_generator(val_inputs_dict, opts):
+	new_tuples = []
+	seen_captions = []
+	#label_counter = 0
+	for cur_tup in val_inputs_dict['caption_tuples']:
+		cur_caption = tuple(cur_tup[0].tolist())
+		if cur_caption not in seen_captions:
+			seen_captions.append(cur_caption)
+			cur_model_id = cur_tup[2]
+			cur_shape = load_voxel(None, cur_model_id, opts)
+			new_tuples.append((cur_model_id,cur_caption,cur_shape))
+			#label_counter += 1
+	caption_tuples = new_tuples
+	raw_caption_list = [tup[1] for tup in caption_tuples]
+	raw_shape_list = [tup[2] for tup in caption_tuples]
+	model_list = [tup[0] for tup in caption_tuples]
+
+	n_captions = len(raw_caption_list)
+	n_loop_captions = n_captions - (n_captions % opts.batch_size)
+	print('number of captions: {0}'.format(n_captions))
+	print('number of captions to loop through for validation: {0}'.format(n_loop_captions))
+	print('number of batches to loop through for validation: {0}'.format(n_loop_captions/opts.batch_size))
+
+	for start in range(0, n_loop_captions, opts.batch_size):
+		captions = raw_caption_list[start:(start + opts.batch_size)]
+		shapes = raw_shape_list[start:(start + opts.batch_size)]
+		minibatch = {
+		'raw_embedding_batch': np.asarray(captions),
+		'voxel_tensor_batch': np.array(shapes).astype(np.float32) ,
+		'model_list': model_list[start:(start + opts.batch_size)]
+		}
+		yield minibatch
+
+
+#generates outputs for only caption matches.
+def TT_generator(val_inputs_dict, opts):
+	new_tuples = []
+	seen_captions = []
+	#loop throguh caption matches
+	k = []
+	matches_keys = list(val_inputs_dict['caption_matches'].keys())
+	for match_key in matches_keys:
+		cur_caption_matches_id = val_inputs_dict['caption_matches'][match_key]
+		
+		#skip captions which do not have any other matching indices minimum 5 caption matching
+		if(len(cur_caption_matches_id) < 4):
+			continue
+		#k.append(len(cur_caption_matches_id))
+		cur_captions = []
+		for i_d in cur_caption_matches_id:
+			tup = val_inputs_dict['caption_tuples'][i_d]
+			cur_caption = tup[0]
+			cur_model_id = tup[2]
+
+			new_tuples.append((cur_model_id,cur_caption))
+	#print(min(k),max(k)) # MINIMUM is 5 and MAXIMUM WAS 20 (measured)
+
+	#input()	
+	caption_tuples = new_tuples
+	raw_caption_list = [tup[1] for tup in caption_tuples]
+	model_list = [tup[0] for tup in caption_tuples]
+
+	n_captions = len(raw_caption_list)
+	n_loop_captions = n_captions - (n_captions % opts.batch_size)
+	print('number of captions: {0}'.format(n_captions))
+	print('number of captions to loop through for validation: {0}'.format(n_loop_captions))
+	print('number of batches to loop through for validation: {0}'.format(n_loop_captions/opts.batch_size))
+
+	for start in range(0, n_loop_captions, opts.batch_size):
+		captions = raw_caption_list[start:(start + opts.batch_size)]
+		minibatch = {
+		'raw_embedding_batch': np.asarray(captions),
+		'model_list': model_list[start:(start + opts.batch_size)]
+		}
+		yield minibatch
+
+
+def _compute_nearest_neighbors_cosine(fit_embeddings_matrix, query_embeddings_matrix, 
+        n_neighbors, fit_eq_query, range_start=0):
     
-            	
-    """
-    first add all model_id's and text embeddings as tuple.
-    """
+    if fit_eq_query is True:
+        n_neighbors += 1
+
+    # print('Using unnormalized cosine distance')
+
+    # Argsort method
+    # unnormalized_similarities = np.dot(query_embeddings_matrix, fit_embeddings_matrix.T)
+    # sort_indices = np.argsort(unnormalized_similarities, axis=1)
+    # # return unnormalized_similarities[:, -n_neighbors:], sort_indices[:, -n_neighbors:]
+    # indices = sort_indices[:, -n_neighbors:]
+    # indices = np.flip(indices, 1)
+
+    # Argpartition method
+    # query_embeddings_matrix: 3000 x 128 
+    # fit_embeddings_matrix: 17000 x 128
+    # resulted unnormalized_similarities: 3000 x 17000
+    unnormalized_similarities = np.dot(query_embeddings_matrix, fit_embeddings_matrix.T)
+    #unnormalized_similarities /= 128
+    #np.savetxt('sim.txt',unnormalized_similarities,fmt='%.2f')
     
-    for minibatch, outputs in zip(minibatch_list, outputs_list):
-        captions_tensor = minibatch['raw_embedding_batch']
-        
-        model_list = minibatch['model_list']
-        for i in range(captions_tensor.shape[0]):
-            
-            caption = captions_tensor[i]
-           
-            #category = category_list[i]
-            model_id = model_list[i//2]     
+    n_samples = unnormalized_similarities.shape[0]
+    ################################################################################################
+    # np.argpartition: It returns an array of indices of the same shape as a that
+    #   index data along the given axis in partitioned order.
+    # kth : int or sequence of ints, Element index to partition by. The k-th element will be in its final sorted position and all smaller elements will
+    # be moved before it and all larger elements behind it. The order all elements in the partitions is
+    # undefined. If provided with a sequence of k-th it will partition all of them into their sorted 
+    # position at once.
+    #################################################################################################
+    sort_indices = np.argpartition(unnormalized_similarities, -n_neighbors, axis=1)
+    # -n_neighbors is in its position, all values bigger than sort_indices[-n_neighbors]
+    # is on the right
+    indices = sort_indices[:, -n_neighbors:]
+    # [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, ...., 29999, .., 2999]
+    row_indices = [x for x in range(n_samples) for _ in range(n_neighbors)] #[0,0,1,1,2,2,3,3,...]
+    # take out nearest n_neighbors elements
+    yo = unnormalized_similarities[row_indices, indices.flatten()].reshape(n_samples, n_neighbors)
+    indices = indices[row_indices, np.argsort(yo, axis=1).flatten()].reshape(n_samples, n_neighbors)
+    indices = np.flip(indices, 1)
 
-            caption_embedding_as_tuple = tuple(caption.tolist())
-            if(caption_embedding_as_tuple in seen_text):
-            	continue
-            caption_embedding = outputs['text_encoder'][i]
-            seen_text.append(caption_embedding_as_tuple)
-            caption_tuple = (model_id, caption_embedding)#before model_id category,
-            caption_tuples.append(caption_tuple)
-            
+    if fit_eq_query is True:
+        n_neighbors -= 1  # Undo the neighbor increment
+        final_indices = np.zeros((indices.shape[0], n_neighbors), dtype=int)
+        compare_mat = np.asarray(list(range(range_start, range_start + indices.shape[0]))).reshape(indices.shape[0], 1)
+        has_self = np.equal(compare_mat, indices)  # has self as nearest neighbor
+        any_result = np.any(has_self, axis=1)
+        for row_idx in range(indices.shape[0]):
+            if any_result[row_idx]:
+                nonzero_idx = np.nonzero(has_self[row_idx, :])
+                assert len(nonzero_idx) == 1
+                new_row = np.delete(indices[row_idx, :], nonzero_idx[0])
+                final_indices[row_idx, :] = new_row
+            else:
+                final_indices[row_idx, :] = indices[row_idx, :n_neighbors]
+        indices = final_indices
+    return indices
 
-
-
-    for minibatch, outputs in zip(minibatch_list, outputs_list):
-        model_list = minibatch['model_list']
-        for i in range(len(model_list)):#captions_tensor.shape[0]
-            
-            
-           
-            #category = category_list[i]
-            model_id = model_list[i]
-            
-            #perhaps some rework needed such that we get all text and shape embeddings without skipping some of them
-            if (model_id in seen_shapes):
-            	continue
-            	
-            		
-            
-            shape_embedding = outputs['shape_encoder'][i]
-            seen_shapes.append(model_id)
-            caption_tuple = (model_id, shape_embedding)#category,
-            caption_tuples.append(caption_tuple)
-            
-
-            
-            
-            #caption_tuple = (caption, category, model_id, shape_embedding)
-            #caption_tuples.append(caption_tuple)
-
-    
-
-    return caption_tuples
+def Dot_Similarity(x, y):
+    if len(x) != len(y):
+        raise ValueError("x and y need to have the same length")
+    return np.dot(x,y.T)
+    #return math.sqrt(sum([(y[i] - x[i]) ** 2 for i in range(len(x))]))
 
 def compute_metrics(embeddings_dict,n_neighbors = 10):
     
-    (embeddings_matrix, labels, num_embeddings) = construct_embeddings_matrix(embeddings_dict)
+    (embeddings_matrix, labels, num_embeddings,label_counter) = construct_embeddings_matrix(embeddings_dict)
 
 
 
@@ -84,23 +164,23 @@ def compute_metrics(embeddings_dict,n_neighbors = 10):
     ##############################################################################################################
     embeddings_matrix = embeddings_matrix.data.numpy() 
     labels = labels.data.numpy().astype(np.int32)
-
-    nbrs = NearestNeighbors(n_neighbors=n_neighbors+1, algorithm='ball_tree').fit(embeddings_matrix)
-    distances, indices = nbrs.kneighbors(embeddings_matrix)
-    ind = []
-    #print(embeddings_matrix)
-    for i,ele in enumerate(indices):
-   		ind.append(list(ele))
-   		ind[i].remove(i)
-   		indices = ind
-   		
-
-   	
-    pr_at_k = compute_pr_at_k(indices, labels, n_neighbors, num_embeddings)
     
+ 
+    indices = _compute_nearest_neighbors_cosine(embeddings_matrix,embeddings_matrix,n_neighbors,True)
+    #indices = simple_text_NN(embeddings_matrix,n_neighbors)
+    #nbrs = NearestNeighbors(n_neighbors=n_neighbors+1, algorithm='brute',metric='mahalanobis',metric_params={'V': np.cov(embeddings_matrix)}).fit(embeddings_matrix)
+    #nbrs = NearestNeighbors(n_neighbors=n_neighbors+1, algorithm='auto').fit(embeddings_matrix)
     
+    #nbrs = NearestNeighbors(n_neighbors=n_neighbors+1, algorithm='auto',metric=Dot_Similarity).fit(embeddings_matrix)
+    
+    #distances, indices = nbrs.kneighbors(embeddings_matrix)
+   
 
-    return pr_at_k
+    #pr = compute_pr_at_k(indices, labels, n_neighbors, num_embeddings)
+    
+    pr = acc_test(indices, labels, n_neighbors, num_embeddings)
+   
+    return pr
 
 
 def construct_embeddings_matrix(embeddings_dict):
@@ -150,9 +230,40 @@ def construct_embeddings_matrix(embeddings_dict):
         labels[idx] = model_id_to_label[model_id]
 
         
-    return embeddings_matrix, labels, num_embeddings,
+    return embeddings_matrix, labels, num_embeddings,label_counter
 
 
+def acc_test(indices,labels,n_neighbors,num_embeddings):
+	num_correct = 0
+	all_counts = 0
+	bb = []
+	for emb in range(num_embeddings):
+		#print("Embedd",emb)
+		label = labels[emb]
+		#print("Current label",label)
+		#print("indices : ",indices[emb])
+		num_correct = 0
+		counter = 0
+		for n in range(len(indices[emb])):
+			neigh = indices[emb][n]
+			if(neigh == emb):
+				continue
+			#print("Neighbor :",neigh)
+			#print("label :",labels[neigh])
+			if(labels[neigh] == label):
+				num_correct += 1
+
+			counter += 1
+		
+		#print(num_correct/counter)
+		#input()
+		bb.append(num_correct/counter)
+			
+	#print(num_correct)
+	#print(num_correct / all_counts)
+	#print("END",np.mean(bb))
+	#input()
+	return np.mean(bb)#num_correct/all_counts
 
 
 def compute_pr_at_k(indices, labels, n_neighbors, num_embeddings, fit_labels=None):
@@ -186,3 +297,55 @@ def compute_pr_at_k(indices, labels, n_neighbors, num_embeddings, fit_labels=Non
     
     Metrics = collections.namedtuple('Metrics',  'precision recall')# recall_rate ndcg')
     return Metrics(precision_at_k, recall_at_k)#, recall_rate_at_k, ave_ndcg_at_k)
+
+"""
+
+def consolidate_caption_tuples(minibatch_list, outputs_list, opts, embedding_type='text'):
+   
+    caption_tuples = []
+    seen_text = []
+    seen_shapes = []
+
+    
+            	
+   
+    if(embedding_type =='text'):
+    	for minibatch, outputs in zip(minibatch_list, outputs_list):
+        	captions_tensor = minibatch['raw_embedding_batch']
+        
+        	model_list = minibatch['model_list']
+        	for i in range(captions_tensor.shape[0]):
+        		caption = captions_tensor[i]
+        		model_id = model_list[i]
+        		caption_embedding_as_tuple = tuple(caption.tolist())
+        		if(caption_embedding_as_tuple in seen_text):
+        			continue
+        		caption_embedding = outputs['text_encoder'][i]
+        		seen_text.append(caption_embedding_as_tuple)
+        		caption_tuple = (model_id, caption_embedding)
+        		caption_tuples.append(caption_tuple)
+            
+    else:
+       
+    	
+    	for minibatch, outputs in zip(minibatch_list, outputs_list):
+        	model_list = minibatch['model_list']
+        	for i in range(len(model_list)//2):
+        		model_id = model_list[int(i*2)]
+
+        		if (model_id in seen_shapes):
+        			continue
+        		shape_embedding = outputs['shape_encoder'][i]
+        		seen_shapes.append(model_id)
+        		caption_tuple = (model_id, shape_embedding)
+        		caption_tuples.append(caption_tuple)
+            
+
+            
+            
+            
+
+    #np.savetxt('id_2.txt',np.array(seen_shapes))  
+
+    return caption_tuples
+ """

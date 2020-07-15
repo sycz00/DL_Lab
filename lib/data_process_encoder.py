@@ -38,7 +38,7 @@ class LBADataProcess(Process):#DataProcess
         self.caption_tuples = data_dict['caption_tuples']
 
         
-        self.caption_matches = data_dict['caption_matches']
+        
         
 
         self.batch_size = opts.batch_size 
@@ -187,7 +187,7 @@ class LBADataProcess(Process):#DataProcess
 
                
                 cur_categories = [cur_category for _ in selected_captions] 
-                cur_model_ids = [cur_model_id ]#for _ in selected_captions] 
+                cur_model_ids = [cur_model_id for _ in selected_captions] 
                 category_list.extend(cur_categories)
                 model_id_list.extend(cur_model_ids) 
                

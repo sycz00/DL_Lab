@@ -66,8 +66,8 @@ class CNNRNNTextEncoder(nn.Module):
         
         if(self.normalize):
             return F.normalize(x, p=2, dim=1)
-        
-        return x
+        else:
+            return x
 
 
 class ShapeEncoder(nn.Module):
@@ -88,13 +88,14 @@ class ShapeEncoder(nn.Module):
             nn.AvgPool3d(3,stride=2)
             )
         
-        
+        """
         self.classifier = nn.Sequential(
             nn.Linear(256, 256),#24576
             nn.ReLU(),
             nn.Linear(256, 128),
         )
-        #self.classifier = nn.Linear(256, 128)
+        """
+        self.classifier = nn.Linear(256, 128)
 
 
 
@@ -108,4 +109,5 @@ class ShapeEncoder(nn.Module):
         x = self.classifier(x)
         if(self.normalize):
             return F.normalize(x, p=2, dim=1)
-        return x
+        else:
+            return x
