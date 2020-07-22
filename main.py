@@ -9,9 +9,12 @@ import torch.optim as optim
 import sys
 
 
-
+import pickle
+import json 
 from multiprocessing import Queue
 from config import cfg
+import lib.accuracy as ut
+
 
 import utils as utils
 import models
@@ -54,59 +57,170 @@ def make_data_processes(data_process_class, queue, data_paths, opts, repeat):
 
     return processes 
 
+
+def create_embedding_tuples(trained_embeddings): 
+    #print(trained_embeddings.keys())
+    dim_emb = trained_embeddings['dataset_size']
+    embeddings_matrix = np.zeros((dim_emb, 128))
+    cat_mod_id = []
+
+    for idx,entry in enumerate(trained_embeddings['caption_embedding_tuples']):
+
+        embeddings_matrix[idx] = entry[3]
+        cat_mod_id.append((entry[1],entry[2]))
+
+    return embeddings_matrix,cat_mod_id
+
+
+def convert_idx_to_words(data_list):
+    """Converts each sentence/caption in the data_list using the idx_to_word dict.
+    Args:
+        idx_to_word: A dictionary mapping word indices (keys) in string format (?) to words.
+        data_list: A list of dictionaries. Each dictionary contains a 'raw_embedding' field (among
+            other fields) that is a list of word indices.
+    Returns:
+        sentences: A list of sentences (strings).
+    """
+    inputs_list = json.load(open(cfg.DIR.JSON_PATH, 'r'))
+    idx_to_word = inputs_list['idx_to_word']
+
+    sentences = []
+    #for idx, cur_dict in enumerate(data_list):
+    #    sentences.append(('%04d  ' % idx) + ' '.join([idx_to_word[str(word_idx)] for word_idx in cur_dict['raw_caption_embedding'] if word_idx != 0]))
+    sentences.append(' '.join([idx_to_word[str(word_idx)] for word_idx in data_list if word_idx != 0]))
+
+    return sentences
+
+
+def retrieval(retrieval_queue,retrieval_proc,text_encoder,embeddings_trained,opts,num,embeddings,cat_mod_id):
+    #text_encoder.load_state_dict(torch.load('models/txt_enc.pth'))
+    #shape_encoder.load_state_dict(torch.load('models/shape_enc.pth'))
+    text_encoder.eval() 
+    it = retrieval_proc[0].iters_per_epoch
+    iteration = 0
+    #################################
+    ##only 200 elements in validation
+    #################################
+    #embeddings,cat_mod_id = create_embedding_tuples(embeddings_trained)
+    print("start retrieval")
+    #while(iteration < it):
+    minibatch = retrieval_queue.get()
+    random_index = num
+    
+    raw_embedding_batch = torch.from_numpy(minibatch['raw_embedding_batch'][random_index]).long().unsqueeze(0).cuda()
+    #print(raw_embedding_batch.size())
+    txt_embedd_output = text_encoder(raw_embedding_batch)
+    #shape_batch = torch.from_numpy(minibatch['voxel_tensor_batch']).permute(0,4,1,2,3).cuda()
+    cat = minibatch['category_list']
+    m_id = minibatch['model_list']
+
+    embeddings = np.append(embeddings,txt_embedd_output.detach().cpu().numpy(),axis=0)
+    n_neighbors = 2
+        #standart euclidean distance
+    #nbrs = NearestNeighbors(n_neighbors=n_neighbors+1, algorithm='ball_tree').fit(embeddings)
+    def EuclideanDistance(x, y):
+        return np.dot(x,y.T)
+
+    nbrs = NearestNeighbors(n_neighbors=n_neighbors+1, algorithm='auto').fit(embeddings)
+    #nbrs = NearestNeighbors(n_neighbors=n_neighbors+1, algorithm='brute',metric='mahalanobis',metric_params={'V': np.cov(embeddings)}).fit(embeddings)
+    distances, indices = nbrs.kneighbors(embeddings)
+    queried_indices = indices[-1,:]#the one we are looking for. contain first, scn, third neirest neighbor of the input sentence
+    #if(queried_indices[0] == indices.shape[0]-1):
+    #	queried_indices = [queried_indices[i] for i in range(len(queried_indices))]
+
+    print(queried_indices)
+    first_NN = cat_mod_id[queried_indices[2]]
+    print(first_NN)
+    print(convert_idx_to_words(minibatch['raw_embedding_batch'][random_index]))
+    png_file = opts.png_dir % (first_NN[1], first_NN[1])
+    img=mpimg.imread(png_file)
+    imgplot = plt.imshow(img)
+    plt.show()
+
+def create_train_ebeddings():
+    mydict = {'a': 1, 'b': 2, 'c': 3}
+    output = open('myfile.pkl', 'wb')
+    pickle.dump(mydict, output)
+    output.close()    
+
 def accuracy(X,Y):
     bsz = X.size(0)
     err_1 = ((X[:bsz//2]-Y)**2).sum(axis=0)
     err_2 = ((X[bsz//2:bsz]-Y)**2).sum(axis=0)
     return err_1+err_2
 
-def val(val_que,val_proces, text_encoder, shape_encoder,loss):
-    iterations = val_process[0].iters_per_epoch
-    losses = []
+def val(val_queue,val_process, text_encoder, shape_encoder,opts):
     text_encoder.eval() 
-    shape_encoder.eval()
-    acc = []
-    for i in range(iterations):
-        minibatch = val_queue.get()
-        
-        raw_embedding_batch = torch.from_numpy(minibatch['raw_embedding_batch']).long().cuda()#torch.Size([batch_size*2, 96])
-        
-        shape_batch = torch.from_numpy(minibatch['voxel_tensor_batch']).permute(0,4,1,2,3).cuda() #torch.Size([batch_size,4,32,32,32])
-        caption_labels_batch = torch.from_numpy(minibatch['caption_label_batch']).long().cuda()
-        
-        shape_category_batch = minibatch['category_list']
-
-        ###################
-        
-
-        #metric_loss = loss(text_encoder_outputs, shape_encoder_outputs)
-
-        #losses.append(metric_loss)
-        minibatch_save = {
-            "raw_embedding_batch": raw_embedding_batch.data.cpu(),
-            'caption_labels_batch': caption_labels_batch.data.cpu(),
-            'category_list': shape_category_batch,
-            'model_list': minibatch['model_list']
-        }
-
-
+    shape_encoder.eval() 
+    
+    #----------------------------------------------------------------------------------------------------
+    ## ONLY FOR TEXT AND SHAPE EMBEDDING together
+    shape_minibatch_list = []
+    shape_outputs_list = []
+    
+    generator_val = ut.TS_generator(opts.val_inputs_dict, opts)
+    embedding_tuples=[]
+    metric_output= []
+    for step, minibatch in enumerate(generator_val):
+        embedding_tuples = []
+        raw_embedding_batch = torch.from_numpy(minibatch['raw_embedding_batch']).long().cuda()
+        shape_batch = torch.from_numpy(minibatch['voxel_tensor_batch']).permute(0,4,1,2,3).cuda()
         text_encoder_outputs = text_encoder(raw_embedding_batch)
         shape_encoder_outputs = shape_encoder(shape_batch)
-
-
-    return np.mean(np.array(losses)), 0
-
         
+        for i in range(opts.batch_size):  
+            embedding_tuples.append((minibatch['model_list'][i],text_encoder_outputs[i].data.cpu()))
+            embedding_tuples.append((minibatch['model_list'][i],shape_encoder_outputs[i].data.cpu()))
+        
+        
+        outputs_dict = {'caption_embedding_tuples': embedding_tuples, 
+                        'dataset_size': len(embedding_tuples)} 
+
+        n_neighbors = 2
+        
+        metrics = ut.compute_metrics(outputs_dict,n_neighbors = n_neighbors) 
+        metric_output.append(metrics)
+    #----------------------------------------------------------------------------------------------------
+    mean_metric = np.mean(np.array(metric_output))
+    print(mean_metric)
+    return mean_metric
+
+
+
+def create_pickle_embedding(mat):
+    dict_ = {}
+    seen_models = []
+    tuples = []
+    for ele in mat:
+        for i in range(len(ele[2])-1):
+
+            if(ele[2][i] in seen_models):
+                continue
+            else:
+                seen_models.append(ele[2][i])
+                tuples.append((ele[0][i],ele[1][i],ele[2][i],ele[3][i]))
+    dict_ = {
+    'caption_embedding_tuples': tuples,
+    'dataset_size':len(tuples)
+    }
+
+    output = open('test.p', 'wb')
+    pickle.dump(dict_, output)
+    output.close()
+    print("DONE")
     
 def main():
    
     
     parser = argparse.ArgumentParser(description='main text2voxel train/test file')
     parser.add_argument('--dataset',help='dataset', default='shapenet', type=str)
+    parser.add_argument('--tensorboard', type=str, default='results')
+
     opts = parser.parse_args()
     opts.dataset = 'shapenet'
-    opts.batch_size = 100
+    opts.batch_size = 20
     opts.data_dir = cfg.DIR.RGB_VOXEL_PATH
+    opts.png_dir = cfg.DIR.RGB_PNG_PATH
     opts.num_workers = cfg.CONST.NUM_WORKERS
     opts.LBA_n_captions_per_model = 2 #as stated in the paper
     opts.LBA_model_type = cfg.LBA.MODEL_TYPE
@@ -114,6 +228,8 @@ def main():
     opts.rho = cfg.LBA.METRIC_MULTIPLIER
     opts.learning_rate = cfg.TRAIN.LEARNING_RATE
     #writer = SummaryWriter('/logs/')
+
+    writer = SummaryWriter(os.path.join(opts.tensorboard,'acc'))
 
     #we basiaclly neglectthe problematic ones later in the dataloader
     opts.probablematic_nrrd_path = cfg.DIR.PROBLEMATIC_NRRD_PATH
@@ -124,32 +240,37 @@ def main():
 
     inputs_dict = utils.open_pickle(cfg.DIR.TRAIN_DATA_PATH) #processed_captions_train.p
     val_inputs_dict = utils.open_pickle(cfg.DIR.VAL_DATA_PATH)#processed_captions_val.p
+    
     test_inputs_dict = utils.open_pickle(cfg.DIR.TEST_DATA_PATH)#processed_captions_test.p
     
-    
+    ret_inputs_dict = utils.open_pickle(cfg.DIR.TEST_DATA_PATH)#processed_captions_test.p
+    opts.val_inputs_dict = ret_inputs_dict#val_inputs_dict
+
+
     data_process_for_class = LBADataProcess
     val_data_process_for_class = LBADataProcess
    
     global train_queue, train_processes 
     global val_queue, val_processes 
     queue_capacity = cfg.CONST.QUEUE_CAPACITY 
-    #queue_capacity = 20
     train_queue = Queue(queue_capacity)
+    queue_capacity
     
     
     train_processes = make_data_processes(data_process_for_class, train_queue, inputs_dict, opts, repeat=True) 
 
-    #val_queue = Queue(queue_capacity)
-    #val_processes = make_data_processes(val_data_process_for_class, val_queue, val_inputs_dict, opts, repeat=True)
+    val_queue = Queue(queue_capacity)
+    val_processes = make_data_processes(val_data_process_for_class, val_queue, val_inputs_dict, opts, repeat=True)
 
     
     text_encoder = CNNRNNTextEncoder(vocab_size=inputs_dict['vocab_size']).cuda()
     shape_encoder = ShapeEncoder().cuda()
     
-    #val(val_queue,val_processes,text_encoder,shape_encoder,opts)
+#     val(val_queue,val_processes,text_encoder,shape_encoder,opts)
     #########################################
     #----------------------------------------
     #########################################    
+#     return
 
     loss2 = Metric_Loss(opts, LBA_inverted_loss=cfg.LBA.INVERTED_LOSS, LBA_normalized=cfg.LBA.NORMALIZE, LBA_max_norm=cfg.LBA.MAX_NORM)
     loss1 = LBA_Loss(lmbda=0.25, LBA_model_type=cfg.LBA.MODEL_TYPE,batch_size=opts.batch_size)
@@ -161,6 +282,9 @@ def main():
     min_batch = train_processes[0].iters_per_epoch
     text_encoder.train() 
     shape_encoder.train()
+    
+    best_loss = np.inf
+
 
     for epoch in range(1000):
         print("NEW EPOCH")
@@ -182,7 +306,7 @@ def main():
             metric_loss = loss2(text_encoder_outputs, shape_encoder_outputs)
             
             loss = lba_loss + opts.rho * metric_loss
-            
+#             loss = metric_loss
             epoch_loss.append(loss.item())
             
                 
@@ -192,17 +316,24 @@ def main():
             metric_loss.backward() 
 
             optimizer_text_encoder.step()
-            optimizer_shape_encoder.step() 
-        print("LOSS",np.mean(epoch_loss))
+            optimizer_shape_encoder.step()
+                                            
+        epoch_loss = np.mean(epoch_loss)
+        print("LOSS",epoch_loss)
+        writer.add_scalar('train loss',epoch_loss,epoch)
+        if(epoch % 5 == 0):
+            del minibatch
+            acc = val(val_queue,val_processes,text_encoder,shape_encoder,opts)
+            writer.add_scalar('validation acc',acc,epoch)
+            text_encoder.train()
+            shape_encoder.train()
 
-        #if(epoch % 10 == 0):
-            #vall_loss,val_acc = val(val_queue,val_processes,text_encoder,shape_encoder,loss)
+        if(epoch_loss < best_loss):
+            best_loss = epoch_loss
+            torch.save(text_encoder.state_dict(), 'models/txt_enc.pth')
+            torch.save(shape_encoder.state_dict(), 'models/shape_enc.pth')
+            print("SAVED MODELS!")
+                                            
 
-            #text_encoder.train() 
-            #shape_encoder.train()
-            
-        
-
-    
 if __name__ == '__main__':
     main()

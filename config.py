@@ -27,7 +27,7 @@ __C.CONST.N_MINIBATCH_TEST = None  # Number of minibatches to use for test phase
 __C.CONST.BATCH_SIZE = 100
 __C.CONST.RNG_SEED = 123  # Consider removing later
 __C.CONST.NUM_WORKERS = 3
-__C.CONST.QUEUE_CAPACITY = 20  # Maximum number of minibatches in data queue
+__C.CONST.QUEUE_CAPACITY = 5  # Maximum number of minibatches in data queue
 __C.CONST.PRINT_FREQ = 20
 __C.CONST.TEST_ALL_TUPLES = False
 __C.CONST.REED_CLASSIFIER = False
@@ -43,6 +43,7 @@ __C.NETWORK = None
 __C.DIR = edict()
 # Path where taxonomy.json is stored 
 __C.DIR.RGB_VOXEL_PATH = '/home/sajad_marvi/project/data/shape_net/nrrd_256_filter_div_32_solid/%s/%s.nrrd'  # TODO: Modify this
+__C.DIR.RGB_PNG_PATH = '/home/sajad_marvi/project/data/shape_net/nrrd_256_filter_div_32_solid/%s/%s.png'
 __C.DIR.LOG_PATH = './output/default'
 __C.DIR.CKPT_PATH = None
 __C.DIR.VAL_CKPT_PATH = None
