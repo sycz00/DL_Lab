@@ -16,7 +16,7 @@ from config import cfg
 import utils as utils
 import lib.accuracy as ut
 import models
-from lib.custom_losses import Metric_Loss 
+from lib.custom_losses import Metric_Loss ,LBA_Loss
 from lib.data_process_encoder import LBADataProcess
 from models.Encoders import CNNRNNTextEncoder, ShapeEncoder
 from multiprocessing import Process, Event 
@@ -116,9 +116,7 @@ def retrieval(retrieval_queue,retrieval_proc,text_encoder,embeddings_trained,opt
 	n_neighbors = 2
 		#standart euclidean distance
 	#nbrs = NearestNeighbors(n_neighbors=n_neighbors+1, algorithm='ball_tree').fit(embeddings)
-	def EuclideanDistance(x, y):
-		return np.dot(x,y.T)
-
+	
 	nbrs = NearestNeighbors(n_neighbors=n_neighbors+1, algorithm='auto').fit(embeddings)
 	#nbrs = NearestNeighbors(n_neighbors=n_neighbors+1, algorithm='brute',metric='mahalanobis',metric_params={'V': np.cov(embeddings)}).fit(embeddings)
 	distances, indices = nbrs.kneighbors(embeddings)
@@ -136,14 +134,6 @@ def retrieval(retrieval_queue,retrieval_proc,text_encoder,embeddings_trained,opt
 	plt.show()
 
 
-def create_train_ebeddings():
-	mydict = {'a': 1, 'b': 2, 'c': 3}
-	output = open('myfile.pkl', 'wb')
-	pickle.dump(mydict, output)
-	output.close()
-
-
-
 def val(val_queue,val_process, text_encoder, shape_encoder,opts):
     text_encoder.eval() 
     shape_encoder.eval() 
@@ -154,6 +144,7 @@ def val(val_queue,val_process, text_encoder, shape_encoder,opts):
     shape_outputs_list = []
     
     generator_val = ut.TS_generator(opts.val_inputs_dict, opts)
+
     embedding_tuples=[]
     for step, minibatch in enumerate(generator_val):
         raw_embedding_batch = torch.from_numpy(minibatch['raw_embedding_batch']).long().cuda()
@@ -179,6 +170,7 @@ def val(val_queue,val_process, text_encoder, shape_encoder,opts):
     return metrics
    
 def create_pickle_embedding(mat):
+	print("Create pickle")
 	dict_ = {}
 	seen_models = []
 	tuples = []
@@ -222,18 +214,18 @@ def main():
 	opts.rho = cfg.LBA.METRIC_MULTIPLIER
 	opts.learning_rate = cfg.TRAIN.LEARNING_RATE
 	
-	writer = SummaryWriter(os.path.join(opts.tensorboard,'acc'))
+	writer = SummaryWriter(os.path.join(opts.tensorboard,'acc_lba_metric'))
 	#we basiaclly neglectthe problematic ones later in the dataloader
 	opts.probablematic_nrrd_path = cfg.DIR.PROBLEMATIC_NRRD_PATH
 	print('----------------- CONFIG -------------------')
 	
 	#DATA LOADINGDOT_AGAIN_EMBEDDINGS
 	######################################################
-	inputs_dict = utils.open_pickle(cfg.DIR.TRAIN_DATA_PATH) #processed_captions_train.p
+	inputs_dict = utils.open_pickle(cfg.DIR.TRAIN_DATA_PATH) 
 	val_inputs_dict = utils.open_pickle(cfg.DIR.VAL_DATA_PATH)#processed_captions_val.p
 	
-	ret_inputs_dict = utils.open_pickle(cfg.DIR.TEST_DATA_PATH)#processed_captions_test.p
-	opts.val_inputs_dict = ret_inputs_dict#val_inputs_dict
+	#ret_inputs_dict = utils.open_pickle(cfg.DIR.TEST_DATA_PATH)#processed_captions_test.p
+	opts.val_inputs_dict = val_inputs_dict
 
 	###############################################
 	#Test purposes
@@ -243,10 +235,10 @@ def main():
 	###############################################
 
 
-	#embeddings_trained = utils.open_pickle('DOT_AGAIN_VAL_EMBEDDINGS.p')
+	#embeddings_trained = utils.open_pickle('test_embeddings.p')
 	data_process_for_class = LBADataProcess
 	val_data_process_for_class = LBADataProcess
-	#ret_data_process = LBADataProcess
+	#ret_data_process = LBADataProcess #retrieval process
 	global train_queue, train_processes
 	global val_queue, val_processes
 	#global ret_queue, ret_processes
@@ -255,55 +247,69 @@ def main():
 
 	train_queue = Queue(queue_capacity)
 	train_processes = make_data_processes(data_process_for_class, train_queue, inputs_dict, opts, repeat=True)
-	val_queue = Queue(queue_capacity)
-	val_processes = make_data_processes(val_data_process_for_class, val_queue, val_inputs_dict, opts, repeat=True)
-	#ret_queue = Queue(400)
+	#val_queue = Queue(queue_capacity)
+	#val_processes = make_data_processes(val_data_process_for_class, val_queue, val_inputs_dict, opts, repeat=True)
+	#ret_queue = Queue(100)
 	#ret_processes = make_data_processes(ret_data_process,ret_queue,ret_inputs_dict,opts,repeat=False)
 	#--------------------------------------------------------------
-
+	
 
 	text_encoder = CNNRNNTextEncoder(vocab_size=inputs_dict['vocab_size']).cuda()
 	shape_encoder = ShapeEncoder().cuda()
-	#if(load):
-	#	text_encoder.load_state_dict(torch.load('models/txt_enc.pth'))
-	#	shape_encoder.load_state_dict(torch.load('models/shape_enc.pth'))
+	if(load):
+		text_encoder.load_state_dict(torch.load('models/txt_enc.pth'))
+		shape_encoder.load_state_dict(torch.load('models/shape_enc.pth'))
 
-	val(val_queue,val_processes,text_encoder,shape_encoder,opts)
-	return
+	#val(val_queue,val_processes,text_encoder,shape_encoder,opts)
+	
 	#embeddings,cat_mod_id = create_embedding_tuples(embeddings_trained)
 	#for i in range(0,200,3):
-		#retrieval(ret_queue,ret_processes,text_encoder,embeddings_trained,opts,i,embeddings,cat_mod_id)
+	#	retrieval(val_queue,val_processes,text_encoder,embeddings_trained,opts,i,embeddings,cat_mod_id)
 	
-	loss = Metric_Loss(opts, LBA_inverted_loss=cfg.LBA.INVERTED_LOSS, LBA_normalized=cfg.LBA.NORMALIZE, LBA_max_norm=cfg.LBA.MAX_NORM)
+	loss_Metric = Metric_Loss(opts, LBA_inverted_loss=cfg.LBA.INVERTED_LOSS, LBA_normalized=cfg.LBA.NORMALIZE, LBA_max_norm=cfg.LBA.MAX_NORM)
+
+	loss_TST = LBA_Loss(lmbda=0.25, LBA_model_type=cfg.LBA.MODEL_TYPE,batch_size=opts.batch_size) 
 	optimizer_text_encoder = optim.Adam(text_encoder.parameters(), lr=cfg.TRAIN.LEARNING_RATE)#, weight_decay=cfg.TRAIN.DECAY_RATE)
 	optimizer_shape_encoder = optim.Adam(shape_encoder.parameters(), lr=cfg.TRAIN.LEARNING_RATE)#,weight_decay=cfg.TRAIN.DECAY_RATE)
 	min_batch = train_processes[0].iters_per_epoch
+	
 	shape_encoder.train()
 	text_encoder.train()
 	#text_encoder.eval()
 	#shape_encoder.eval()
 	best_loss = np.inf
-
+	
 	#mat = []
 	for epoch in range(1000):
 		print("NEW EPOCH : ",epoch)
 		epoch_loss = []
 		for i in range(min_batch):
 			minibatch = train_queue.get()
+			#print(minibatch['caption_label_batch'])
+			#print("minibatch_shape",minibatch['caption_label_batch'].shape)
+			#return
 			raw_embedding_batch = torch.from_numpy(minibatch['raw_embedding_batch']).long().cuda()#torch.Size([batch_size*2, 96])
 			#print(raw_embedding_batch.size())
 			shape_batch = torch.from_numpy(minibatch['voxel_tensor_batch']).permute(0,4,1,2,3).cuda() #torch.Size([batch_size,4,32,32,32])
 			text_encoder_outputs = text_encoder(raw_embedding_batch)
 			shape_encoder_outputs = shape_encoder(shape_batch)
-			
+			caption_labels_batch = torch.from_numpy(minibatch['caption_label_batch']).long().cuda()
 
 			#mat.append((raw_embedding_batch.data.cpu(),minibatch['category_list'],minibatch['model_list'],shape_encoder_outputs.data.cpu()))
-        	
-			metric_loss = loss(text_encoder_outputs, shape_encoder_outputs)
-			epoch_loss.append(metric_loss.item())
+			metric_loss = loss_Metric(text_encoder_outputs, shape_encoder_outputs)
+			lba_loss,_,_ = loss_TST(text_encoder_outputs, shape_encoder_outputs,caption_labels_batch) 
+			
+
+			print("metric loss : ",metric_loss.item())
+			print("lba_loss : ",lba_loss.item())
+			complete_loss = lba_loss + opts.rho * metric_loss
+			print("complete loss : ",complete_loss.item())
+			#epoch_loss.append(metric_loss.item())
+			epoch_loss.append(complete_loss.item())
 			optimizer_text_encoder.zero_grad()
 			optimizer_shape_encoder.zero_grad()
-			metric_loss.backward()
+			#metric_loss.backward()
+			complete_loss.backward()
 			optimizer_text_encoder.step()
 			optimizer_shape_encoder.step()
 
@@ -323,7 +329,7 @@ def main():
 			torch.save(text_encoder.state_dict(), 'models/txt_enc.pth')
 			torch.save(shape_encoder.state_dict(), 'models/shape_enc.pth')
 			print("SAVED MODELS!")
-	#create_pickle_embedding(mat)
+	create_pickle_embedding(mat)
            
         
 

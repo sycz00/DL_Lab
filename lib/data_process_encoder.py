@@ -187,7 +187,7 @@ class LBADataProcess(Process):#DataProcess
 
                
                 cur_categories = [cur_category for _ in selected_captions] 
-                cur_model_ids = [cur_model_id for _ in selected_captions] 
+                cur_model_ids = [cur_model_id ]#for _ in selected_captions] 
                 category_list.extend(cur_categories)
                 model_id_list.extend(cur_model_ids) 
                
@@ -195,14 +195,14 @@ class LBADataProcess(Process):#DataProcess
             # Length is the number of captions 
             # Index/label indicates which captions comes from the same shape 
             # [0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7]
-            #label_list = [x for x in range(self.n_unique_shape_categories)
-            #                for _ in range(self.n_captions_per_model)] 
+            label_list = [x for x in range(self.n_unique_shape_categories)
+                            for _ in range(self.n_captions_per_model)] 
 
             batch_captions = np.array(captions_list).astype(np.int32)
             batch_shapes = np.array(shapes_list).astype(np.float32) 
             # convert dim 
             #batch_shapes = batch_shapes.transpose((0, 4, 2,3,1)) # bz x 32 x 32 x 32 x 4 -> bz x 4 x 32 x 32 x 32
-            #batch_label = np.array(label_list).astype(np.int32)  
+            batch_label = np.array(label_list).astype(np.int32)  
              
             # item in the batch_data is pytorch Tensor 
             # the following will wait until the queue frees 
@@ -210,7 +210,7 @@ class LBADataProcess(Process):#DataProcess
             batch_data = {
                 "raw_embedding_batch": batch_captions, 
                 'voxel_tensor_batch': batch_shapes, 
-                #'caption_label_batch': batch_label, 
+                'caption_label_batch': batch_label, 
                 'category_list':category_list, 
                 'model_list':model_id_list, 
             }

@@ -11,37 +11,38 @@ from lib.utils import load_voxel
 
 #generates output for caption and shape embeddings
 def TS_generator(val_inputs_dict, opts):
-	new_tuples = []
-	seen_captions = []
+    
+    new_tuples = []
+    seen_captions = []
 	#label_counter = 0
-	for cur_tup in val_inputs_dict['caption_tuples']:
-		cur_caption = tuple(cur_tup[0].tolist())
-		if cur_caption not in seen_captions:
-			seen_captions.append(cur_caption)
-			cur_model_id = cur_tup[2]
-			cur_shape = load_voxel(None, cur_model_id, opts)
-			new_tuples.append((cur_model_id,cur_caption,cur_shape))
-			#label_counter += 1
-	caption_tuples = new_tuples
-	raw_caption_list = [tup[1] for tup in caption_tuples]
-	raw_shape_list = [tup[2] for tup in caption_tuples]
-	model_list = [tup[0] for tup in caption_tuples]
+    for cur_tup in val_inputs_dict['caption_tuples']:
+        cur_caption = tuple(cur_tup[0].tolist())
+        if cur_caption not in seen_captions:
+            seen_captions.append(cur_caption)
+            cur_model_id = cur_tup[2]
+            cur_shape = load_voxel(None, cur_model_id, opts)
+            new_tuples.append((cur_model_id,cur_caption,cur_shape))
+			
 
-	n_captions = len(raw_caption_list)
-	n_loop_captions = n_captions - (n_captions % opts.batch_size)
-	print('number of captions: {0}'.format(n_captions))
-	print('number of captions to loop through for validation: {0}'.format(n_loop_captions))
-	print('number of batches to loop through for validation: {0}'.format(n_loop_captions/opts.batch_size))
 
-	for start in range(0, n_loop_captions, opts.batch_size):
-		captions = raw_caption_list[start:(start + opts.batch_size)]
-		shapes = raw_shape_list[start:(start + opts.batch_size)]
-		minibatch = {
-		'raw_embedding_batch': np.asarray(captions),
-		'voxel_tensor_batch': np.array(shapes).astype(np.float32) ,
-		'model_list': model_list[start:(start + opts.batch_size)]
-		}
-		yield minibatch
+    caption_tuples = new_tuples
+    raw_caption_list = [tup[1] for tup in caption_tuples]
+    raw_shape_list = [tup[2] for tup in caption_tuples]
+    model_list = [tup[0] for tup in caption_tuples]
+    n_captions = len(raw_caption_list)
+    n_loop_captions = n_captions - (n_captions % opts.batch_size)
+    print('number of captions: {0}'.format(n_captions))
+    print('number of captions to loop through for validation: {0}'.format(n_loop_captions))
+    print('number of batches to loop through for validation: {0}'.format(n_loop_captions/opts.batch_size))
+    for start in range(0, n_loop_captions, opts.batch_size):
+        captions = raw_caption_list[start:(start + opts.batch_size)]
+        shapes = raw_shape_list[start:(start + opts.batch_size)]
+        minibatch = {
+        'raw_embedding_batch': np.asarray(captions),
+        'voxel_tensor_batch': np.array(shapes).astype(np.float32) ,
+        'model_list': model_list[start:(start + opts.batch_size)]
+        }
+        yield minibatch
 
 
 #generates outputs for only caption matches.
