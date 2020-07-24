@@ -216,14 +216,14 @@ def compute_metrics(embeddings_dict,n_neighbors = 10):
     #tt = np.dot(embeddings_matrix,embeddings_matrix.T)
     #print(labels[0:10])
     #print(labels[5840:5860])
-    indices = _compute_nearest_neighbors_cosine(embeddings_matrix,embeddings_matrix,n_neighbors,True)
+    #indices = _compute_nearest_neighbors_cosine(embeddings_matrix,embeddings_matrix,n_neighbors,True)
     #indices = simple_text_NN(embeddings_matrix,n_neighbors)
     #nbrs = NearestNeighbors(n_neighbors=n_neighbors+1, algorithm='brute',metric='mahalanobis',metric_params={'V': np.cov(embeddings_matrix)}).fit(embeddings_matrix)
-    #nbrs = NearestNeighbors(n_neighbors=n_neighbors+1, algorithm='auto').fit(embeddings_matrix)
+    nbrs = NearestNeighbors(n_neighbors=n_neighbors+1, algorithm='auto').fit(embeddings_matrix)
     
     #nbrs = NearestNeighbors(n_neighbors=n_neighbors+1, algorithm='auto',metric=Dot_Similarity).fit(embeddings_matrix)
     
-    #distances, indices = nbrs.kneighbors(embeddings_matrix)
+    distances, indices = nbrs.kneighbors(embeddings_matrix)
    
 
     #pr = compute_pr_at_k(indices, labels, n_neighbors, num_embeddings)
