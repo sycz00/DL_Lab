@@ -282,7 +282,7 @@ def main():
 	
 	loss_Metric = Metric_Loss(opts, LBA_inverted_loss=cfg.LBA.INVERTED_LOSS, LBA_normalized=cfg.LBA.NORMALIZE, LBA_max_norm=cfg.LBA.MAX_NORM)
 
-	loss_TST = LBA_Loss(lmbda=0.25, LBA_model_type=cfg.LBA.MODEL_TYPE,batch_size=opts.batch_size) 
+	#loss_TST = LBA_Loss(lmbda=0.25, LBA_model_type=cfg.LBA.MODEL_TYPE,batch_size=opts.batch_size) 
 	optimizer_text_encoder = optim.Adam(text_encoder.parameters(), lr=cfg.TRAIN.LEARNING_RATE)#, weight_decay=cfg.TRAIN.DECAY_RATE)
 	optimizer_shape_encoder = optim.Adam(shape_encoder.parameters(), lr=cfg.TRAIN.LEARNING_RATE)#,weight_decay=cfg.TRAIN.DECAY_RATE)
 	min_batch = train_processes[0].iters_per_epoch
@@ -314,15 +314,15 @@ def main():
 
 			#mat.append((raw_embedding_batch.data.cpu(),minibatch['category_list'],minibatch['model_list'],shape_encoder_outputs.data.cpu()))
 			metric_loss = loss_Metric(text_encoder_outputs, shape_encoder_outputs)
-			TST_loss,STS_loss = loss_TST(text_encoder_outputs, shape_encoder_outputs,caption_labels_batch) 
+			#TST_loss,STS_loss = loss_TST(text_encoder_outputs, shape_encoder_outputs,caption_labels_batch) 
 			
 
 			#print("metric loss : ",metric_loss.item())
 			#print("TST : "TST_loss.item() , " STS :",STS_loss.item())
-			complete_loss = (TST_loss+STS_loss) + opts.rho * metric_loss
+			complete_loss = metric_loss#(TST_loss+STS_loss) + opts.rho * metric_loss
 			#print("complete loss : ",complete_loss.item())
-			epoch_loss_STS.append(STS_loss.item())
-			epoch_loss_TST.append(TST_loss.item())
+			#epoch_loss_STS.append(STS_loss.item())
+			#epoch_loss_TST.append(TST_loss.item())
 			#epoch_loss.append(metric_loss.item())
 			epoch_loss.append(complete_loss.item())
 			optimizer_text_encoder.zero_grad()
@@ -343,7 +343,7 @@ def main():
 			writer.add_scalar('validation acc',acc,epoch)
 			text_encoder.train()
 			shape_encoder.train()
-			print("TST {} and STS {} LOSS MEAN ".format(np.mean(epoch_loss_TST),np.mean(epoch_loss_STS)))
+			#print("TST {} and STS {} LOSS MEAN ".format(np.mean(epoch_loss_TST),np.mean(epoch_loss_STS)))
 
 		if(best_acc < acc):
 			best_loss = epoch_loss
