@@ -189,16 +189,18 @@ class LBA_Loss(nn.Module):
         # pdb.set_trace()
         # during test when we use this criterion, we may not get self.batch_size data 
         # so ..
-        self.batch_size = text_embedding.size(0)
+#         self.batch_size = text_embedding.size(0)
 
         if self.LBA_model_type == 'MM' or self.LBA_model_type == 'TST': 
             A = text_embedding
             B = shape_embedding 
+            self.batch_size = A.size(0)
             # TST_loss = L^{TST}_R + \lambda * L^{TST}_H, see equation (1) in the text2shape paper 
             TST_loss, P_TST, P_target_TST = self.semisup_loss(A, B, labels) 
         if self.LBA_model_type == 'MM' or self.LBA_model_type == 'STS':
             B = text_embedding
             A = shape_embedding
+            self.batch_size = A.size(0)
             labels = torch.from_numpy(np.array(range(self.batch_size))).type_as(A.data)
             # see equation (3) in the paper 
             # STS_loss = L^{TST}
