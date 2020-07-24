@@ -141,8 +141,8 @@ class Semisup_Loss(nn.Module):
         # may be we should use mse instead of soft label cross entropy loss 
         ################################################
         # we will first take log function on P_TST and then applity softmax 
-        #L_TST_r = self.cross_entropy(P_TST, p_target)
-        L_TST_r = self.mse
+        L_TST_r = self.cross_entropy(P_TST, p_target)
+        #L_TST_r = self.mse_loss(P_TS_distr)
 
         ################################################
         ## To associate text descriptions with all possible matching shapes
@@ -174,14 +174,23 @@ class LBA_Loss(nn.Module):
         # pdb.set_trace()
         # during test when we use this criterion, we may not get self.batch_size data 
         # so ..
-        self.batch_size = text_embedding.size(0)
+        #self.batch_size = text_embedding.size(0)
 
-        
+        #labels for the captions : always two instances each class => uni(0.5,0.5)
         A = text_embedding
-        B = shape_embedding 
-            
-        TST_loss, P_TST, P_target_TST = self.semisup_loss(A, B, labels) 
-        return TST_loss, P_TST, P_target_TST
+        self.batch_size = A.size(0)
+        B = shape_embedding    
+        TST_loss, _, _ = self.semisup_loss(A, B, labels) 
+
+
+        #only one instance per class => predict the 1.0
+        B = text_embedding
+        A = shape_embedding
+        self.batch_size = A.size(0)
+        labels = torch.from_numpy(np.array(range(self.batch_size))).type_as(A.data)
+        STS_loss, _, _ = self.semisup_loss(A, B, labels)
+
+        return TST_loss, STS_loss,#P_TST, P_target_TST
         
 
 ################################################################### 
@@ -222,6 +231,14 @@ class Metric_Loss(nn.Module):
         self.shape_norm_weight = 2.0 ##as used in the official implementation
         
         #self.trip_loss = TripletLoss(margin = 0.5)
+    def pairwise_distances(self,x, y=None):
+        x_norm = (x**2).sum(1).view(-1, 1)
+
+        y_t = torch.transpose(y, 0, 1)
+        y_norm = (y**2).sum(1).view(1, -1)
+        dist = x_norm + y_norm - 2.0 * torch.mm(x, y_t)
+
+        return dist#torch.clamp(dist, 0.0, np.inf)
 
         
     def mahalanobis(self,x, y, cov=None):
@@ -271,7 +288,7 @@ class Metric_Loss(nn.Module):
             #D = F.relu(magnitude + torch.t(magnitude) - 2 * squared_matrix).sqrt()#mahalanobis_distances
             #expmD = torch.exp(m - D)
         else:
-            D = torch.mm(X,X.transpose(0, 1))
+            D = self.pairwise_distances(X,X)#torch.mm(X,X.transpose(0, 1))
             #D /= 128 #if not normalized in encoder
             expmD = torch.exp(m + D)
 

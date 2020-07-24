@@ -142,25 +142,36 @@ def val(val_queue,val_process, text_encoder, shape_encoder,opts):
     ## ONLY FOR TEXT AND SHAPE EMBEDDING together
     shape_minibatch_list = []
     shape_outputs_list = []
-    
-    generator_val = ut.TS_generator(opts.val_inputs_dict, opts)
-
     embedding_tuples=[]
+
+    generator_val = ut.TT_generator(opts.val_inputs_dict, opts)
+
+    #opts.batch_size = 2
     for step, minibatch in enumerate(generator_val):
         raw_embedding_batch = torch.from_numpy(minibatch['raw_embedding_batch']).long().cuda()
-        shape_batch = torch.from_numpy(minibatch['voxel_tensor_batch']).permute(0,4,1,2,3).cuda()
+        #shape_batch = torch.from_numpy(minibatch['voxel_tensor_batch']).permute(0,4,1,2,3).cuda()
         text_encoder_outputs = text_encoder(raw_embedding_batch)
+        #shape_encoder_outputs = shape_encoder(shape_batch)
+        for i in range(opts.batch_size):  
+        	embedding_tuples.append((minibatch['model_list'][i],text_encoder_outputs[i].data.cpu().numpy()))
+        	#embedding_tuples.append((minibatch['model_list'][i],shape_encoder_outputs[i].data.cpu()))
+    
+    generator_val = ut.S_generator(opts.val_inputs_dict, opts)    	
+    for step, minibatch in enumerate(generator_val):
+        #raw_embedding_batch = torch.from_numpy(minibatch['raw_embedding_batch']).long().cuda()
+        shape_batch = torch.from_numpy(minibatch['voxel_tensor_batch']).permute(0,4,1,2,3).cuda()
+        #text_encoder_outputs = text_encoder(raw_embedding_batch)
         shape_encoder_outputs = shape_encoder(shape_batch)
         for i in range(opts.batch_size):  
-        	embedding_tuples.append((minibatch['model_list'][i],text_encoder_outputs[i].data.cpu()))
-        	embedding_tuples.append((minibatch['model_list'][i],shape_encoder_outputs[i].data.cpu()))
-        
+        	#embedding_tuples.append((minibatch['model_list'][i],text_encoder_outputs[i].data.cpu()))
+        	embedding_tuples.append((minibatch['model_list'][i],shape_encoder_outputs[i].data.cpu().numpy()))
+       
 
     outputs_dict = {'caption_embedding_tuples': embedding_tuples, 
                     'dataset_size': len(embedding_tuples)} 
 
     print("length T-S Embeddings",len(embedding_tuples))
-    n_neighbors = 2
+    n_neighbors = 20
     print("comp metric")
     metrics = ut.compute_metrics(outputs_dict,n_neighbors = n_neighbors) 
 
@@ -214,7 +225,7 @@ def main():
 	opts.rho = cfg.LBA.METRIC_MULTIPLIER
 	opts.learning_rate = cfg.TRAIN.LEARNING_RATE
 	
-	writer = SummaryWriter(os.path.join(opts.tensorboard,'acc_lba_metric'))
+	writer = SummaryWriter(os.path.join(opts.tensorboard,'acc_lba_metric_with_STS_norm_metric'))
 	#we basiaclly neglectthe problematic ones later in the dataloader
 	opts.probablematic_nrrd_path = cfg.DIR.PROBLEMATIC_NRRD_PATH
 	print('----------------- CONFIG -------------------')
@@ -224,7 +235,7 @@ def main():
 	inputs_dict = utils.open_pickle(cfg.DIR.TRAIN_DATA_PATH) 
 	val_inputs_dict = utils.open_pickle(cfg.DIR.VAL_DATA_PATH)#processed_captions_val.p
 	
-	#ret_inputs_dict = utils.open_pickle(cfg.DIR.TEST_DATA_PATH)#processed_captions_test.p
+	ret_inputs_dict = utils.open_pickle(cfg.DIR.TEST_DATA_PATH)#processed_captions_test.p
 	opts.val_inputs_dict = val_inputs_dict
 
 	###############################################
@@ -247,8 +258,8 @@ def main():
 
 	train_queue = Queue(queue_capacity)
 	train_processes = make_data_processes(data_process_for_class, train_queue, inputs_dict, opts, repeat=True)
-	#val_queue = Queue(queue_capacity)
-	#val_processes = make_data_processes(val_data_process_for_class, val_queue, val_inputs_dict, opts, repeat=True)
+	val_queue = Queue(queue_capacity)
+	val_processes = make_data_processes(val_data_process_for_class, val_queue, val_inputs_dict, opts, repeat=True)
 	#ret_queue = Queue(100)
 	#ret_processes = make_data_processes(ret_data_process,ret_queue,ret_inputs_dict,opts,repeat=False)
 	#--------------------------------------------------------------
@@ -256,12 +267,15 @@ def main():
 
 	text_encoder = CNNRNNTextEncoder(vocab_size=inputs_dict['vocab_size']).cuda()
 	shape_encoder = ShapeEncoder().cuda()
-	if(load):
-		text_encoder.load_state_dict(torch.load('models/txt_enc.pth'))
-		shape_encoder.load_state_dict(torch.load('models/shape_enc.pth'))
+	#if(load):
+		#text_encoder.load_state_dict(torch.load('models_metric_loss/txt_enc.pth'))
+		#shape_encoder.load_state_dict(torch.load('models_metric_loss/shape_enc.pth'))
+		#text_encoder.load_state_dict(torch.load('models/txt_enc.pth'))
+		#shape_encoder.load_state_dict(torch.load('models/shape_enc.pth'))
 
 	#val(val_queue,val_processes,text_encoder,shape_encoder,opts)
-	
+	#kill_processes(val_queue, val_processes)
+	#return 
 	#embeddings,cat_mod_id = create_embedding_tuples(embeddings_trained)
 	#for i in range(0,200,3):
 	#	retrieval(val_queue,val_processes,text_encoder,embeddings_trained,opts,i,embeddings,cat_mod_id)
@@ -278,11 +292,14 @@ def main():
 	#text_encoder.eval()
 	#shape_encoder.eval()
 	best_loss = np.inf
+	best_acc = 0.0
 	
 	#mat = []
 	for epoch in range(1000):
 		print("NEW EPOCH : ",epoch)
 		epoch_loss = []
+		epoch_loss_STS = []
+		epoch_loss_TST = []
 		for i in range(min_batch):
 			minibatch = train_queue.get()
 			#print(minibatch['caption_label_batch'])
@@ -297,13 +314,15 @@ def main():
 
 			#mat.append((raw_embedding_batch.data.cpu(),minibatch['category_list'],minibatch['model_list'],shape_encoder_outputs.data.cpu()))
 			metric_loss = loss_Metric(text_encoder_outputs, shape_encoder_outputs)
-			lba_loss,_,_ = loss_TST(text_encoder_outputs, shape_encoder_outputs,caption_labels_batch) 
+			TST_loss,STS_loss = loss_TST(text_encoder_outputs, shape_encoder_outputs,caption_labels_batch) 
 			
 
-			print("metric loss : ",metric_loss.item())
-			print("lba_loss : ",lba_loss.item())
-			complete_loss = lba_loss + opts.rho * metric_loss
-			print("complete loss : ",complete_loss.item())
+			#print("metric loss : ",metric_loss.item())
+			#print("TST : "TST_loss.item() , " STS :",STS_loss.item())
+			complete_loss = (TST_loss+STS_loss) + opts.rho * metric_loss
+			#print("complete loss : ",complete_loss.item())
+			epoch_loss_STS.append(STS_loss.item())
+			epoch_loss_TST.append(TST_loss.item())
 			#epoch_loss.append(metric_loss.item())
 			epoch_loss.append(complete_loss.item())
 			optimizer_text_encoder.zero_grad()
@@ -317,19 +336,22 @@ def main():
 		#epoch_loss = 0
 		print("LOSS",epoch_loss)
 		writer.add_scalar('train loss',epoch_loss,epoch)
+		acc = 0
 		if(epoch % 5 == 0):
 			#pass
 			acc = val(val_queue,val_processes,text_encoder,shape_encoder,opts)
 			writer.add_scalar('validation acc',acc,epoch)
 			text_encoder.train()
 			shape_encoder.train()
+			print("TST {} and STS {} LOSS MEAN ".format(np.mean(epoch_loss_TST),np.mean(epoch_loss_STS)))
 
-		if(epoch_loss < best_loss):
+		if(best_acc < acc):
 			best_loss = epoch_loss
+			best_acc = acc
 			torch.save(text_encoder.state_dict(), 'models/txt_enc.pth')
 			torch.save(shape_encoder.state_dict(), 'models/shape_enc.pth')
 			print("SAVED MODELS!")
-	create_pickle_embedding(mat)
+	#create_pickle_embedding(mat)
            
         
 
