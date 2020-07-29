@@ -107,6 +107,11 @@ class ShapeNetDataset(Dataset):
             selected_tuples = [self.caption_tuples[idx] for idx in selected_caption_idxs] 
             cur_model_id = selected_tuples[0][2]
             cur_category = selected_tuples[0][1]
+
+            #if(cur_category == '3d734hd'):
+            #    db_ind = np.random.randint(self.num_data)
+            #    continue
+
             selected_model_ids = cur_model_id
 
             if cur_model_id in self.bad_model_ids:

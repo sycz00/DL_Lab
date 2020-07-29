@@ -106,9 +106,9 @@ def compute_metrics(dataset, embeddings_dict, n_neighbors=20,metric='minkowski',
     # embeddings_dict['caption_embedding_tuples'] = sorted(embeddings_dict['caption_embedding_tuples'], key=lambda tup: tup[0].tolist()) 
     #num_embeddings, label_to_model_idmodel_id_to_label
     (embeddings_matrix, labels, num_embeddings, label_counter) = construct_embeddings_matrix(embeddings_dict)#dataset,
-    print("LABELS:",labels[labels == 0])
-    print("label length",labels.shape)
-    print("label counter ",label_counter)
+    #print("LABELS:",labels[labels == 0])
+    #print("label length",labels.shape)
+    #print("label counter ",label_counter)
     #print('min embedding val:', np.amin(embeddings_matrix))
     #print('max embedding val:', np.amax(embeddings_matrix))
     #print('mean embedding (abs) val:', np.mean(np.absolute(embeddings_matrix)))
