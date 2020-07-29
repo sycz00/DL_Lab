@@ -22,8 +22,10 @@ def collate_wrapper_val(batch):
     labels = []
 
     for i,dp in enumerate(batch):
+        if(dp[2] == None):
+            continue
         for k in dp[0]:
-            #print(k.shape)
+            
             captions.append(k)
             labels.append(i)
             model_ids.append(dp[2])
@@ -173,16 +175,17 @@ class ShapeNetDataset_Validation(Dataset):
                 db_ind = np.random.randint(self.num_data) # take a random index
                 continue
             
-
+            
             selected_caption_idxs = random.sample(caption_idxs, k=self.n_captions_per_model)
-            selected_tuples = [self.caption_tuples[idx] for idx in selected_caption_idxs] 
+            selected_tuples = [self.caption_tuples[idx] for idx in caption_idxs]#selected_caption_idxs] 
             cur_model_id = selected_tuples[0][2]
             cur_category = selected_tuples[0][1]
             selected_model_ids = cur_model_id
 
             if cur_model_id in self.bad_model_ids:
                 db_ind = np.random.randint(self.num_data)
-                continue
+                return None,None,None,None
+                #continue
             else:
                 break 
         cur_shape = load_voxel(cur_category, cur_model_id, self.opts)

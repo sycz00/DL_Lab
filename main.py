@@ -90,21 +90,43 @@ def val(text_encoder, shape_encoder,opts):
    
     embedding_tuples=[]
     
-    #generator_val = ut.TS_generator(opts.val_inputs_dict, opts)
-    #min_batch = val_processes[0].iters_per_epoch
-    #opts.batch_size = 500
-    	#for step, minibatch in renumerate(generator_val)
-    batch_size = 256
+    generator_val = gn.SS_generator(opts.val_inputs_dict, opts)    	
+    for step, minibatch in enumerate(generator_val):
+
+        #raw_embedding_batch = torch.from_numpy(minibatch['raw_embedding_batch']).long().cuda()
+        shape_batch = torch.from_numpy(minibatch['voxel_tensor_batch']).permute(0,4,1,2,3).cuda()
+        #print("SIZE : ",shape_batch.size())
+        #text_encoder_outputs = text_encoder(raw_embedding_batch)
+        shape_encoder_outputs = shape_encoder(shape_batch)
+        for i in range(opts.batch_size):  
+        	embedding_tuples.append((minibatch['model_list'][i],shape_encoder_outputs[i].data.cpu()))
+    
+    
+    generator_val = gn.TS_generator(opts.val_inputs_dict, opts)    	
+    for step, minibatch in enumerate(generator_val):
+
+        raw_embedding_batch = torch.from_numpy(minibatch['raw_embedding_batch']).long().cuda()
+        #shape_batch = torch.from_numpy(minibatch['voxel_tensor_batch']).permute(0,4,1,2,3).cuda()
+        #print("SIZE : ",shape_batch.size())
+        text_encoder_outputs = text_encoder(raw_embedding_batch)
+        #shape_encoder_outputs = shape_encoder(shape_batch)
+        for i in range(opts.batch_size):  
+        	embedding_tuples.append((minibatch['model_list'][i],text_encoder_outputs[i].data.cpu()))
+        	
+
+    """
+    batch_size = 100
     params = {'batch_size':batch_size,
           'shuffle': True,
           'num_workers': 3,
           'collate_fn' : collate_wrapper_val}
 
-    num_of_cap_per_model = 5
+    num_of_cap_per_model = 6
     dat_loader = ShapeNetDataset_Validation(opts.val_inputs_dict,num_of_cap_per_model,opts)
     validation_generator = torch.utils.data.DataLoader(dat_loader, **params)
     print("start validation ")
     for captions,shapes,model_ids,categories,labels in validation_generator:
+    	print(captions.size())
     	#print(model_ids[0])
     	#print(model_ids[model_ids==model_ids[0]])
     	#input()
@@ -122,7 +144,7 @@ def val(text_encoder, shape_encoder,opts):
 
 	
     #caption, category, model_id, embedding
-	
+	"""
     outputs_dict = {'caption_embedding_tuples': embedding_tuples, 
                     'dataset_size': len(embedding_tuples)} 
 
@@ -130,7 +152,7 @@ def val(text_encoder, shape_encoder,opts):
     n_neighbors = 10#6
     print("comp metric")
     data_set = "shapenet"
-    metrics = ut.compute_metrics(data_set,outputs_dict,n_neighbors = n_neighbors) 
+    metrics = ut.compute_metrics(data_set,outputs_dict,n_neighbors = n_neighbors,nm=1) 
 
     #precision = np.mean(metrics[0])
     print("precision for Text-to-Shape Embeddings {0} matches is : {1}".format(n_neighbors,metrics))
@@ -149,7 +171,7 @@ def main():
 	parser.add_argument('--tensorboard', type=str, default='results')
 	opts = parser.parse_args()
 	opts.dataset = 'shapenet'
-	opts.batch_size = 100
+	opts.batch_size = 256
 	opts.data_dir = cfg.DIR.RGB_VOXEL_PATH
 	opts.png_dir = cfg.DIR.RGB_PNG_PATH
 	opts.num_workers = cfg.CONST.NUM_WORKERS
@@ -228,8 +250,11 @@ def main():
 	text_encoder = CNNRNNTextEncoder(vocab_size=inputs_dict['vocab_size']).cuda()
 	shape_encoder = ShapeEncoder().cuda()
 	#if(load):
-	#	text_encoder.load_state_dict(torch.load('models_metric_loss/txt_enc.pth'))
-	#	shape_encoder.load_state_dict(torch.load('models_metric_loss/shape_enc.pth'))
+		#text_encoder.load_state_dict(torch.load('models_metric_loss/txt_enc.pth'))
+		#shape_encoder.load_state_dict(torch.load('models_metric_loss/shape_enc.pth'))
+
+		#text_encoder.load_state_dict(torch.load('models_sts_tst/txt_enc_loss.pth'))
+		#shape_encoder.load_state_dict(torch.load('models_sts_tst/shape_enc_loss.pth'))
 	#	text_encoder.load_state_dict(torch.load('models/txt_enc_loss.pth'))
 	#	shape_encoder.load_state_dict(torch.load('models/shape_enc_loss.pth'))
 
@@ -254,7 +279,7 @@ def main():
 	#shape_encoder.eval()
 	
 	best_loss = np.inf
-	params_2 = {'batch_size': 100,
+	params_2 = {'batch_size': 256,
           'shuffle': True,
           'num_workers': 5,
           'collate_fn' : collate_wrapper_train}
@@ -303,13 +328,13 @@ def main():
 		print("LOSS",epoch_loss)
 		writer.add_scalar('train loss',epoch_loss,epoch)
 		acc = 0
-		if(epoch % 5 == 0):
+		#if(epoch % 5 == 0):
 			#pass
-			acc = val(text_encoder,shape_encoder,opts_val)
-			writer.add_scalar('validation acc',acc,epoch)
-			text_encoder.train()
-			shape_encoder.train()
-			print("TST {} and STS {} LOSS MEAN ".format(np.mean(epoch_loss_TST),np.mean(epoch_loss_STS)))
+		acc = val(text_encoder,shape_encoder,opts_val)
+		writer.add_scalar('validation acc',acc,epoch)
+		text_encoder.train()
+		shape_encoder.train()
+		#print("TST {} and STS {} LOSS MEAN ".format(np.mean(epoch_loss_TST),np.mean(epoch_loss_STS)))
 
 		if(best_acc < acc):
 			#best_loss = epoch_loss

@@ -60,7 +60,7 @@ def _compute_nearest_neighbors_cosine(fit_embeddings_matrix, query_embeddings_ma
         indices = final_indices
     return indices
 
-def acc_test(indices,labels,n_neighbors,num_embeddings):
+def acc_test(indices,labels,n_neighbors,num_embeddings,num_true=1):
     print("TEST FOR ",n_neighbors)
     num_correct = 0
     all_counts = 0
@@ -89,7 +89,7 @@ def acc_test(indices,labels,n_neighbors,num_embeddings):
             counter += 1
         
         """
-        if(counts >= 1):
+        if(counts >= num_true):
             all_counts += 1
 
         #bb.append(num_correct/n_neighbors)
@@ -97,7 +97,7 @@ def acc_test(indices,labels,n_neighbors,num_embeddings):
     
     return all_counts / num_embeddings#np.mean(bb)#
 
-def compute_metrics(dataset, embeddings_dict, n_neighbors=20,metric='minkowski', concise=False):
+def compute_metrics(dataset, embeddings_dict, n_neighbors=20,nm=1,metric='minkowski', concise=False):
     """Compute all the metrics for the text encoder evaluation.
     """
     # assert len(embeddings_dict['caption_embedding_tuples']) < 10000
@@ -119,7 +119,7 @@ def compute_metrics(dataset, embeddings_dict, n_neighbors=20,metric='minkowski',
     indices = _compute_nearest_neighbors_cosine(embeddings_matrix, embeddings_matrix, n_neighbors,True)
 
     print('Computing precision recall.')
-    recall = acc_test(indices,labels,n_neighbors,num_embeddings)
+    recall = acc_test(indices,labels,n_neighbors,num_embeddings,num_true=nm)
     #pr_at_k = compute_pr_at_k(indices, labels, n_neighbors, num_embeddings)
 
 
@@ -134,10 +134,12 @@ def compute_metrics(dataset, embeddings_dict, n_neighbors=20,metric='minkowski',
     
     return recall
     #return pr_at_k  
+
+
 def construct_embeddings_matrix(embeddings_dict):
     
     
-    embedding_sample = embeddings_dict['caption_embedding_tuples'][0][2]
+    embedding_sample = embeddings_dict['caption_embedding_tuples'][0][1]
     embedding_dim = embedding_sample.shape[0]
     num_embeddings = embeddings_dict['dataset_size']
     
@@ -156,7 +158,7 @@ def construct_embeddings_matrix(embeddings_dict):
     for idx, caption_tuple in enumerate(embeddings_dict['caption_embedding_tuples']):
 
         # Parse caption tuple
-        category, model_id, embedding = caption_tuple#model_id, embedding = caption_tuple
+        model_id, embedding = caption_tuple#model_id, embedding = caption_tuple
 
         # Swap model ID and category depending on dataset
     
