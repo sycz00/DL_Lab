@@ -219,7 +219,7 @@ class Metric_Loss(nn.Module):
         #if LBA_inverted_loss is True: 
         #self.cur_margin = 1.0 
         #else: 
-        self.cur_margin = 1.0
+        self.cur_margin = 0.5
 
         ################################################
         ## should we specify the self.text_norm_weight and self.shape_norm_weight 
@@ -268,29 +268,85 @@ class Metric_Loss(nn.Module):
 
 
     
+    def triplet_loss(self,input_tensor, name='triplet_loss', margin=1):
     
-    def smoothed_metric_loss(self, input_tensor, margin=1,similarity='dot'): 
+        
+            # Song et al., Deep Metric Learning via Lifted Structured Feature Embedding
+            # Define feature X \in \mathbb{R}^{N \times C}
+        X = input_tensor
+        m = margin
+
+        # Compute the pairwise distance
+        Xe = X.unsqueeze(1)#tf.expand_dims(X, 1)
+        
+        
+        Dsq = torch.sum(torch.square(Xe - Xe.permute(1, 0, 2)),2)#tf.reduce_sum(tf.square(Xe - tf.transpose(Xe, (1, 0, 2))), 2)
+        D = torch.sqrt(Dsq + 1e-8)
+        mD = m - D
+
+        # Compute the loss
+        # Assume that the input data is aligned in a way that two consecutive data form a pair
+        batch_size= X.size()[0]#X.get_shape().as_list()
+
+        # L_{ij} = \log (\sum_{i, k} exp\{m - D_{ik}\} + \sum_{j, l} exp\{m - D_{jl}\}) + D_{ij}
+        # L = \frac{1}{2|P|}\sum_{(i,j)\in P} \max(0, J_{i,j})^2
+        J_all = []
+        for pair_ind in range(batch_size // 2):
+            i = pair_ind * 2
+            j = i + 1
+            ind_rest = np.hstack([np.arange(0, pair_ind * 2),
+                                  np.arange(pair_ind * 2 + 2, batch_size)])
+
+            inds = [[i, k] for k in ind_rest]
+            inds.extend([[j, l] for l in ind_rest])
+
+            J_ij = torch.max(mD[inds]+D[[i,j]])#tf.reduce_max(tf.gather_nd(mD, inds)) + tf.gather_nd(D, [[i, j]])
+            J_all.append(J_ij)
+
+        J_all = torch.stack(J_all)#tf.convert_to_tensor(J_all)
+        #loss = tf.divide(tf.reduce_mean(tf.square(tf.maximum(J_all, 0))), 2.0, name='metric_loss')
+        
+        
+         
+        #J_max,_ = torch.max(J_all,0)
+        loss = torch.div(torch.mean(torch.square(J_all)),2.0)
+        #tf.losses.add_loss(loss)
+        return loss
+
+
+    def smoothed_metric_loss(self, input_tensor, margin=1.,similarity='dot'): 
         """
          Song et al., Deep Metric Learning via Lifted Structured Feature Embedding
         input_tensor: size: N x emb_size 
         """ 
        
+        #FOR SAJAD : 
+        # CHANGE MARGIN TO EITHER 1.0 OR 0.5
+        # CHANGE D = D/128 or D = 1.0 - D
 
         X = input_tensor # N x emb_size 
-        m = margin 
+        m = self.cur_margin
 
-        if(similarity != 'dot'):
+        #if(similarity != 'dot'):
             #mahanaobis distance instead of simple dot product
-            D = self.mahalanobis(X,X)
-            expmD = torch.exp(m - D)
+            #D = self.mahalanobis(X,X)
+            #expmD = torch.exp(m - D)
             #magnitude = (input_tensor ** 2).sum(1).expand(self.batch_size, self.batch_size)
             #squared_matrix = input_tensor.mm(torch.t(input_tensor))
             #D = F.relu(magnitude + torch.t(magnitude) - 2 * squared_matrix).sqrt()#mahalanobis_distances
             #expmD = torch.exp(m - D)
-        else:
-            D = self.pairwise_distances(X,X)#torch.mm(X,X.transpose(0, 1))
-            #D /= 128 #if not normalized in encoder
-            expmD = torch.exp(m + D)
+        #else:
+            #normalize X for each of the embeddings
+            #X = F.normalize(X, p=2, dim=1)
+        #Xe = X.unsqueeze(1)
+        #t = torch.matmul(Xe,Xe.permute(1, 0, 2))
+            
+        
+        D = torch.mm(X,X.transpose(0, 1))#self.pairwise_distances(X,X)#nn.CosineSimilarity(dim=1, eps=1e-6)#
+        
+        D /= 128 #if not normalized in encoder
+        #D = 1.0 - D
+        expmD = torch.exp(m + D)
 
 
 
@@ -316,10 +372,11 @@ class Metric_Loss(nn.Module):
             neg_col_ids = [int(coord[1]) for coord in neg_inds]
 
             neg_inds = [neg_row_ids, neg_col_ids]
-            if(similarity != 'dot'):
-                J_ij = torch.square(F.relu(torch.log(torch.sum(expmD[neg_inds])) + D[i, j]))
-            else:
-                J_ij = torch.square(F.relu(torch.log(torch.sum(expmD[neg_inds])) - D[i, j]))
+            #if(similarity != 'dot'):
+            #    J_ij = torch.square(F.relu(torch.log(torch.sum(expmD[neg_inds])) + D[i, j]))
+            #else:
+            #J_ij = torch.square(F.relu(torch.log(torch.sum(expmD[neg_inds])) - D[i, j]))
+            J_ij = torch.log(torch.sum(expmD[neg_inds])) - D[i, j]
                 
             #J_ij = torch.log(torch.sum(expmD[neg_inds])) + D[i, j]
             J_all.append(J_ij) #torch.square(F.relu(J_ij)) 
@@ -329,8 +386,8 @@ class Metric_Loss(nn.Module):
         
         J_all = torch.stack(J_all)
         
-        #loss = torch.mean(F.relu(J_all)**2)*0.5 #mean represents |P| and therefore only 1/2 remains to be multiplied with 
-        loss = torch.mean(J_all)*0.5#J_all/(2*counter)
+        loss = torch.div(torch.mean(torch.square(F.relu(J_all))),2)#*0.5 #mean represents |P| and therefore only 1/2 remains to be multiplied with 
+        #loss = torch.mean(J_all)*0.5#J_all/(2*counter)
         
         return loss 
 
@@ -349,7 +406,7 @@ class Metric_Loss(nn.Module):
 
         embeddings = text_embeddings  
         #T-T LOSS
-        metric_tt_loss= self.smoothed_metric_loss(embeddings, self.cur_margin) 
+        metric_tt_loss= self.smoothed_metric_loss(embeddings, self.cur_margin) #self.triplet_loss(embeddings)#
         
         
         
@@ -370,7 +427,7 @@ class Metric_Loss(nn.Module):
        
         self.batch_size = embeddings.size(0)
         #T-S Loss
-        metric_st_loss = self.smoothed_metric_loss(embeddings,self.cur_margin)
+        metric_st_loss = self.smoothed_metric_loss(embeddings,self.cur_margin)#self.triplet_loss(embeddings)#
         
         
         

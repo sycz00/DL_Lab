@@ -155,7 +155,11 @@ class LBADataProcess(Process):#DataProcess
                     cur_category, cur_model_id = self.verify_batch(selected_tuples) 
                     #print(cur_model_id)
                     # select shapes/models 
-                    
+
+
+                    #added b meeee
+                    #cur_category = selected_tuples[0][1]
+                    #cur_model_id = selected_tuples[0][2]
                     selected_model_ids = [cur_model_id]
 
                     
@@ -187,7 +191,7 @@ class LBADataProcess(Process):#DataProcess
 
                
                 cur_categories = [cur_category for _ in selected_captions] 
-                cur_model_ids = [cur_model_id ]#for _ in selected_captions] 
+                cur_model_ids = [cur_model_id for _ in selected_captions] 
                 category_list.extend(cur_categories)
                 model_id_list.extend(cur_model_ids) 
                
