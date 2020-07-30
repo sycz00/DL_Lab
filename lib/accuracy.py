@@ -61,7 +61,7 @@ def _compute_nearest_neighbors_cosine(fit_embeddings_matrix, query_embeddings_ma
     return indices
 
 def acc_test(indices,labels,n_neighbors,num_embeddings,num_true=1):
-    print("TEST FOR ",n_neighbors)
+    
     num_correct = 0
     all_counts = 0
     bb = []
@@ -73,22 +73,8 @@ def acc_test(indices,labels,n_neighbors,num_embeddings,num_true=1):
         
         #counter = 0
         counts = sum(labels[indices[emb]] == label)
-        #num_correct = 0
-        #print("ind :",indices[emb])
-        """
-        for n in range(len(indices[emb])):
-            neigh = indices[emb][n]
-            if(neigh == emb):
-                continue
-            
-            if(labels[neigh] == label):
-                num_correct += 1
-                counts += 1
-                #break
-
-            counter += 1
         
-        """
+        
         if(counts >= num_true):
             all_counts += 1
 
@@ -118,10 +104,10 @@ def compute_metrics(dataset, embeddings_dict, n_neighbors=20,nm=1,metric='minkow
     
     indices = _compute_nearest_neighbors_cosine(embeddings_matrix, embeddings_matrix, n_neighbors,True)
 
-    print('Computing precision recall.')
+    print('Computing recall.')
     recall = acc_test(indices,labels,n_neighbors,num_embeddings,num_true=nm)
     #pr_at_k = compute_pr_at_k(indices, labels, n_neighbors, num_embeddings)
-
+    
 
     # plot_pr_curve(pr_at_k)
 
@@ -176,65 +162,6 @@ def construct_embeddings_matrix(embeddings_dict):
         
     return embeddings_matrix, labels, num_embeddings,label_counter
 
-"""
-def construct_embeddings_matrix(dataset, embeddings_dict, model_id_to_label=None,
-                                label_to_model_id=None):
-    
-    assert (((model_id_to_label is None) and (label_to_model_id is None)) or
-            ((model_id_to_label is not None) and (label_to_model_id is not None)))
-    embedding_sample = embeddings_dict['caption_embedding_tuples'][0][3]
-    embedding_dim = embedding_sample.shape[0]
-    num_embeddings = embeddings_dict['dataset_size']
-    if (dataset == 'shapenet') and (num_embeddings > 30000):
-        raise ValueError('Too many ({}) embeddings. Only use up to 30000.'.format(num_embeddings))
-    assert embedding_sample.ndim == 1
-
-    # Print info about embeddings
-    print('Number of embeddings:', num_embeddings)
-    print('Dimensionality of embedding:', embedding_dim)
-    print('Estimated size of embedding matrix (GB):',
-          embedding_dim * num_embeddings * 4 / 1024 / 1024 / 1024)
-    print('')
-
-    # Create embeddings matrix (n_samples x n_features) and vector of labels
-    embeddings_matrix = np.zeros((num_embeddings, embedding_dim))
-    labels = np.zeros((num_embeddings)).astype(int)
-
-    if (model_id_to_label is None) and (label_to_model_id is None):
-        model_id_to_label = {}
-        label_to_model_id = {}
-        label_counter = 0
-        new_dicts = True
-    else:
-        new_dicts = False
-
-    for idx, caption_tuple in enumerate(embeddings_dict['caption_embedding_tuples']):
-
-        # Parse caption tuple
-        caption,category, model_id, embedding = caption_tuple
-
-        # Swap model ID and category depending on dataset
-        if dataset == 'primitives':
-            tmp = model_id
-            model_id = category
-            category = tmp
-
-        # Add model ID to dict if it has not already been added
-        if new_dicts:
-            if model_id not in model_id_to_label:
-                model_id_to_label[model_id] = label_counter
-                label_to_model_id[label_counter] = model_id
-                label_counter += 1
-
-        # Update the embeddings matrix and labels vector
-        embeddings_matrix[idx] = embedding
-        labels[idx] = model_id_to_label[model_id]
-
-        # Print progress
-        if (idx + 1) % 10000 == 0:
-            print('Processed {} / {} embeddings'.format(idx + 1, num_embeddings))
-    return embeddings_matrix, labels, model_id_to_label, num_embeddings, label_to_model_id
-"""
 
 def compute_pr_at_k(indices, labels, n_neighbors, num_embeddings, fit_labels=None):
     """Compute precision and recall at k (for k=1 to n_neighbors)

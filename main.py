@@ -81,7 +81,7 @@ def retrieval(retrieval_queue,retrieval_proc,text_encoder,embeddings_trained,opt
 	plt.show()
 
 
-def val(text_encoder, shape_encoder,opts):
+def val(text_encoder, shape_encoder,opts,shape_raw,shape_mod,text_raw,text_mod):
     text_encoder.eval() 
     shape_encoder.eval() 
     
@@ -89,28 +89,27 @@ def val(text_encoder, shape_encoder,opts):
     ## ONLY FOR TEXT AND SHAPE EMBEDDING together
    
     embedding_tuples=[]
-    
-    generator_val = gn.SS_generator(opts.val_inputs_dict, opts)    	
+    generator_val = gn.generator_minibatch(shape_raw,shape_mod,opts)   	
     for step, minibatch in enumerate(generator_val):
 
         #raw_embedding_batch = torch.from_numpy(minibatch['raw_embedding_batch']).long().cuda()
-        shape_batch = torch.from_numpy(minibatch['voxel_tensor_batch']).permute(0,4,1,2,3).cuda()
+        shape_batch = torch.from_numpy(minibatch['input']).permute(0,4,1,2,3).cuda()
         #print("SIZE : ",shape_batch.size())
         #text_encoder_outputs = text_encoder(raw_embedding_batch)
         shape_encoder_outputs = shape_encoder(shape_batch)
-        for i in range(opts.batch_size):  
+        for i in range(shape_batch.size()[0]):  
         	embedding_tuples.append((minibatch['model_list'][i],shape_encoder_outputs[i].data.cpu()))
     
     
-    generator_val = gn.TS_generator(opts.val_inputs_dict, opts)    	
+    generator_val = gn.generator_minibatch(text_raw,text_mod,opts)    	
     for step, minibatch in enumerate(generator_val):
 
-        raw_embedding_batch = torch.from_numpy(minibatch['raw_embedding_batch']).long().cuda()
+        raw_embedding_batch = torch.from_numpy(minibatch['input']).long().cuda()
         #shape_batch = torch.from_numpy(minibatch['voxel_tensor_batch']).permute(0,4,1,2,3).cuda()
         #print("SIZE : ",shape_batch.size())
         text_encoder_outputs = text_encoder(raw_embedding_batch)
         #shape_encoder_outputs = shape_encoder(shape_batch)
-        for i in range(opts.batch_size):  
+        for i in range(raw_embedding_batch.size()[0]):  
         	embedding_tuples.append((minibatch['model_list'][i],text_encoder_outputs[i].data.cpu()))
         	
 
@@ -185,7 +184,7 @@ def main():
 	
 	
 	
-	writer = SummaryWriter(os.path.join(opts.tensorboard,'new_new'))
+	writer = SummaryWriter(os.path.join(opts.tensorboard,'Encoder_not_normalized'))
 	#we basiaclly neglectthe problematic ones later in the dataloader
 	opts.probablematic_nrrd_path = cfg.DIR.PROBLEMATIC_NRRD_PATH
 	opts_val = copy.deepcopy(opts)
@@ -249,6 +248,9 @@ def main():
 
 	text_encoder = CNNRNNTextEncoder(vocab_size=inputs_dict['vocab_size']).cuda()
 	shape_encoder = ShapeEncoder().cuda()
+
+	shape_gen_raw,shape_mod_list = gn.SS_generator(opts_val.val_inputs_dict, opts)
+	text_gen_raw,text_mod_list = gn.TS_generator(opts_val.val_inputs_dict, opts)
 	#if(load):
 		#text_encoder.load_state_dict(torch.load('models_metric_loss/txt_enc.pth'))
 		#shape_encoder.load_state_dict(torch.load('models_metric_loss/shape_enc.pth'))
@@ -258,7 +260,7 @@ def main():
 	#	text_encoder.load_state_dict(torch.load('models/txt_enc_loss.pth'))
 	#	shape_encoder.load_state_dict(torch.load('models/shape_enc_loss.pth'))
 
-	#val(text_encoder,shape_encoder,opts_val)
+	#val(text_encoder,shape_encoder,opts_val,shape_gen_raw,shape_mod_list,text_gen_raw,text_mod_list)
 	#return
 	#utils.kill_processes(val_queue, val_processes)
 	#return
@@ -330,7 +332,7 @@ def main():
 		acc = 0
 		#if(epoch % 5 == 0):
 			#pass
-		acc = val(text_encoder,shape_encoder,opts_val)
+		acc = val(text_encoder,shape_encoder,opts_val,shape_gen_raw,shape_mod_list,text_gen_raw,text_mod_list)
 		writer.add_scalar('validation acc',acc,epoch)
 		text_encoder.train()
 		shape_encoder.train()

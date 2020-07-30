@@ -344,7 +344,7 @@ class Metric_Loss(nn.Module):
         
         D = torch.mm(X,X.transpose(0, 1))#self.pairwise_distances(X,X)#nn.CosineSimilarity(dim=1, eps=1e-6)#
         
-        D /= 128 #if not normalized in encoder
+        #D /= 128 #if not normalized in encoder
         #D = 1.0 - D
         expmD = torch.exp(m + D)
 
