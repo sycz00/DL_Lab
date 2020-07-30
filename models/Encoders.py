@@ -63,8 +63,8 @@ class CNNRNNTextEncoder(nn.Module):
         x = x.gather(0, masks)[0]
         #x = x.squeeze(0)
         x = self.classifier(x)
-        norm = x.norm(dim=1, p=2, keepdim=True)
-        x = x.div(norm.expand_as(x))
+        #norm = x.norm(dim=1, p=2, keepdim=True)
+        #x = x.div(norm.expand_as(x))
         #if(self.normalize):
         #return F.normalize(x, p=2, dim=1)
         #else:
@@ -110,7 +110,7 @@ class ShapeEncoder(nn.Module):
         x = self.classifier(x)
         #if(self.normalize):
         #return F.normalize(x, p=2, dim=1)
-        norm = x.norm(dim=1, p=2, keepdim=True)
-        x = x.div(norm.expand_as(x))
+        #norm = x.norm(dim=1, p=2, keepdim=True)
+        #x = x.div(norm.expand_as(x))
         #else:
         return x

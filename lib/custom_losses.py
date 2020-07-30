@@ -219,7 +219,7 @@ class Metric_Loss(nn.Module):
         #if LBA_inverted_loss is True: 
         #self.cur_margin = 1.0 
         #else: 
-        self.cur_margin = 0.5
+        self.cur_margin = 1.0
 
         ################################################
         ## should we specify the self.text_norm_weight and self.shape_norm_weight 
@@ -337,11 +337,11 @@ class Metric_Loss(nn.Module):
             #expmD = torch.exp(m - D)
         #else:
             #normalize X for each of the embeddings
-            #X = F.normalize(X, p=2, dim=1)
+             
         #Xe = X.unsqueeze(1)
         #t = torch.matmul(Xe,Xe.permute(1, 0, 2))
             
-        
+        X = F.normalize(X, p=2, dim=1)
         D = torch.mm(X,X.transpose(0, 1))#self.pairwise_distances(X,X)#nn.CosineSimilarity(dim=1, eps=1e-6)#
         
         #D /= 128 #if not normalized in encoder
@@ -375,8 +375,8 @@ class Metric_Loss(nn.Module):
             #if(similarity != 'dot'):
             #    J_ij = torch.square(F.relu(torch.log(torch.sum(expmD[neg_inds])) + D[i, j]))
             #else:
-            #J_ij = torch.square(F.relu(torch.log(torch.sum(expmD[neg_inds])) - D[i, j]))
-            J_ij = torch.log(torch.sum(expmD[neg_inds])) - D[i, j]
+            J_ij = torch.square(F.relu(torch.log(torch.sum(expmD[neg_inds])) - D[i, j]))
+            #J_ij = torch.log(torch.sum(expmD[neg_inds])) - D[i, j]
                 
             #J_ij = torch.log(torch.sum(expmD[neg_inds])) + D[i, j]
             J_all.append(J_ij) #torch.square(F.relu(J_ij)) 
@@ -386,7 +386,7 @@ class Metric_Loss(nn.Module):
         
         J_all = torch.stack(J_all)
         
-        loss = torch.div(torch.mean(torch.square(F.relu(J_all))),2)#*0.5 #mean represents |P| and therefore only 1/2 remains to be multiplied with 
+        loss = torch.div(torch.mean(J_all),2)#*0.5 #mean represents |P| and therefore only 1/2 remains to be multiplied with 
         #loss = torch.mean(J_all)*0.5#J_all/(2*counter)
         
         return loss 

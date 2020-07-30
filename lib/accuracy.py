@@ -34,6 +34,9 @@ def _compute_nearest_neighbors_cosine(fit_embeddings_matrix, query_embeddings_ma
     # indices = np.flip(indices, 1)
 
     # Argpartition method
+    query_embeddings_matrix = normalize(query_embeddings_matrix, axis=1)
+    fit_embeddings_matrix = normalize(fit_embeddings_matrix, axis=1)
+     
     unnormalized_similarities = np.dot(query_embeddings_matrix, fit_embeddings_matrix.T)
     n_samples = unnormalized_similarities.shape[0]
     sort_indices = np.argpartition(unnormalized_similarities, -n_neighbors, axis=1)
@@ -69,16 +72,13 @@ def acc_test(indices,labels,n_neighbors,num_embeddings,num_true=1):
         
         label = labels[emb] #e.g. 0
         
-        #counts = 0
-        
-        #counter = 0
         counts = sum(labels[indices[emb]] == label)
         
         
         if(counts >= num_true):
             all_counts += 1
 
-        #bb.append(num_correct/n_neighbors)
+        
             
     
     return all_counts / num_embeddings#np.mean(bb)#
@@ -91,7 +91,7 @@ def compute_metrics(dataset, embeddings_dict, n_neighbors=20,nm=1,metric='minkow
     # embeddings_dict['caption_embedding_tuples'] = sorted(embeddings_dict['caption_embedding_tuples'], key=lambda tup: tup[2])
     # embeddings_dict['caption_embedding_tuples'] = sorted(embeddings_dict['caption_embedding_tuples'], key=lambda tup: tup[0].tolist()) 
     #num_embeddings, label_to_model_idmodel_id_to_label
-    (embeddings_matrix, labels, num_embeddings, label_counter) = construct_embeddings_matrix(embeddings_dict)#dataset,
+    (embeddings_matrix, labels, num_embeddings, label_counter) = construct_embeddings_matrix(embeddings_dict)
     #print("LABELS:",labels[labels == 0])
     #print("label length",labels.shape)
     #print("label counter ",label_counter)
@@ -109,15 +109,7 @@ def compute_metrics(dataset, embeddings_dict, n_neighbors=20,nm=1,metric='minkow
     #pr_at_k = compute_pr_at_k(indices, labels, n_neighbors, num_embeddings)
     
 
-    # plot_pr_curve(pr_at_k)
-
-    # Print some nearest neighbor indexes and labels (for debugging)
-    # for i in range(10):
-    #     print('Label:', labels[i])
-    #     print('Neighbor indices:', indices[i][:5])
-    #     print('Neighbors:', [labels[x] for x in indices[i][:5]])
-
-    
+   
     return recall
     #return pr_at_k  
 
@@ -142,8 +134,6 @@ def construct_embeddings_matrix(embeddings_dict):
     
 
     for idx, caption_tuple in enumerate(embeddings_dict['caption_embedding_tuples']):
-
-        # Parse caption tuple
         model_id, embedding = caption_tuple#model_id, embedding = caption_tuple
 
         # Swap model ID and category depending on dataset
@@ -164,15 +154,7 @@ def construct_embeddings_matrix(embeddings_dict):
 
 
 def compute_pr_at_k(indices, labels, n_neighbors, num_embeddings, fit_labels=None):
-    """Compute precision and recall at k (for k=1 to n_neighbors)
-
-    Args:
-        indices: num_embeddings x n_neighbors array with ith entry holding nearest neighbors of
-                 query i
-        labels: 1-d array with correct class of query
-        n_neighbors: number of neighbors to consider
-        num_embeddings: number of queries
-    """
+    
     if fit_labels is None:
         fit_labels = labels
     num_correct = np.zeros((num_embeddings, n_neighbors))
@@ -220,7 +202,7 @@ def print_model_id_info(model_id_to_label):
     print('Number of models (or categories if synthetic dataset):', len(model_id_to_label.keys()))
     print('')
 
-    # Look at a few example model IDs
+    
     
 def print_nearest_info(query_model_ids, nearest_model_ids, query_sentences, nearest_sentences,
                        render_dir=None):

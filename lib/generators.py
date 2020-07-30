@@ -4,7 +4,12 @@ import sys
 sys.path.append("..")
 from config import cfg
 import pickle
+#04379243 cat_one TABLE
+            #03001627 cat_two CHAIR
 
+            #if(cur_category == '04379243'):
+            #    db_ind = np.random.randint(self.num_data)
+            #    continue
 def TS_generator(val_inputs_dict, opts):
     
     new_tuples = []
@@ -19,6 +24,12 @@ def TS_generator(val_inputs_dict, opts):
         cur_caption = tuple(cur_tup[0].tolist())
         if(cur_tup[2] in bad_model_ids):
             continue
+
+        #04379243 CLASS : TABLE
+        #03001627 CLASS : CHAIR
+        #if(cur_tup[1] == '04379243'):
+            #continue
+
         if cur_caption not in seen_captions:
             
             seen_captions.append(cur_caption)
@@ -62,6 +73,11 @@ def SS_generator(val_inputs_dict, opts):
     for cur_tup in val_inputs_dict['caption_tuples']:
         if(cur_tup[2] in bad_model_ids):
             continue
+
+        #04379243 CLASS : TABLE
+        #03001627 CLASS : CHAIR
+        #if(cur_tup[1] == '04379243'):
+            #continue
         cur_model_id = cur_tup[2]
         if cur_model_id not in seen_shapes:
             
@@ -99,7 +115,7 @@ def generator_minibatch(input_list, model_list, opts):
         yield minibatch
 
 
-
+"""
 def S_generator(val_inputs_dict, opts):
     new_tuples = []
     seen_shapes = []
@@ -188,3 +204,4 @@ def TT_generator(val_inputs_dict, opts):
 		'model_list': model_list[start:(start + opts.batch_size)]
 		}
         yield minibatch
+"""

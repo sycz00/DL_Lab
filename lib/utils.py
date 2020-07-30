@@ -8,7 +8,7 @@ import collections
 import datetime 
 import torch 
 from lib.render import render_model_id #lib.render import render_model_id 
-
+from config import cfg
 
 import pdb 
 
@@ -42,7 +42,7 @@ def create_embedding_tuples(trained_embeddings):
     for idx,entry in enumerate(trained_embeddings['caption_embedding_tuples']):
         
         embeddings_matrix[idx] = entry[3]
-        cat_mod_id.append((entry[1],entry[2]))
+        cat_mod_id.append(entry[2])
 
         
     return embeddings_matrix,cat_mod_id

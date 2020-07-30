@@ -23,13 +23,13 @@ from models.Encoders import CNNRNNTextEncoder, ShapeEncoder
 from multiprocessing import Process, Event 
 import time
 
-#from torch.utils.tensorboard import SummaryWriter
+from torch.utils.tensorboard import SummaryWriter
 
 from sklearn.neighbors import NearestNeighbors
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import copy
-from lib.DataLoader import ShapeNetDataset, ShapeNetDataset_Validation, collate_wrapper_val, collate_wrapper_train
+from lib.DataLoader import ShapeNetDataset,  collate_wrapper_val, collate_wrapper_train
 
 
 
@@ -37,48 +37,81 @@ from lib.DataLoader import ShapeNetDataset, ShapeNetDataset_Validation, collate_
 	
 
 
-def retrieval(retrieval_queue,retrieval_proc,text_encoder,embeddings_trained,opts,num,embeddings,cat_mod_id):
+def retrieval(text_encoder,ret_dict,opts):
 	#text_encoder.load_state_dict(torch.load('models/txt_enc.pth'))
 	#shape_encoder.load_state_dict(torch.load('models/shape_enc.pth'))
 	text_encoder.eval() 
-	it = retrieval_proc[0].iters_per_epoch
+	
 	iteration = 0
-	#################################
-	##only 200 elements in validation
-	#################################
-	
+
+	embeddings_trained = utils.open_pickle('DOT_AGAIN_EMBEDDINGS.p')
+	embeddings, model_ids = utils.create_embedding_tuples(embeddings_trained)
+	#print(model_ids)
+	queried_captions = []
+
 	print("start retrieval")
-	#while(iteration < it):
-	minibatch = retrieval_queue.get()
-	random_index = num
+	num_of_captions = len(ret_dict['caption_tuples'])
+	num_of_retrieval = 10
+	while(iteration < num_of_retrieval):
+		
+		rand_ind = np.random.randint(0,num_of_captions)
+		caption_tuple = ret_dict['caption_tuples'][rand_ind]
+		caption = caption_tuple[0]
+		model_id = caption_tuple[2]
+		queried_captions.append(caption)
 	
-	raw_embedding_batch = torch.from_numpy(minibatch['raw_embedding_batch'][random_index]).long().unsqueeze(0).cuda()
-	#print(raw_embedding_batch.size())
-	txt_embedd_output = text_encoder(raw_embedding_batch)
-	#shape_batch = torch.from_numpy(minibatch['voxel_tensor_batch']).permute(0,4,1,2,3).cuda()
-	cat = minibatch['category_list']
-	m_id = minibatch['model_list']
-
-	embeddings = np.append(embeddings,txt_embedd_output.detach().cpu().numpy(),axis=0)
-	n_neighbors = 4
-		#standart euclidean distance
-	#nbrs = NearestNeighbors(n_neighbors=n_neighbors+1, algorithm='ball_tree').fit(embeddings)
+		input_caption = torch.from_numpy(caption).unsqueeze(0).long().cuda()
+		
 	
-	nbrs = NearestNeighbors(n_neighbors=n_neighbors+1, algorithm='auto').fit(embeddings)
-	#nbrs = NearestNeighbors(n_neighbors=n_neighbors+1, algorithm='brute',metric='mahalanobis',metric_params={'V': np.cov(embeddings)}).fit(embeddings)
-	distances, indices = nbrs.kneighbors(embeddings)
-	queried_indices = indices[-1,:]#the one we are looking for. contain first, scn, third neirest neighbor of the input sentence
-	#if(queried_indices[0] == indices.shape[0]-1):
-	#	queried_indices = [queried_indices[i] for i in range(len(queried_indices))]
+		txt_embedd_output = text_encoder(input_caption)
 
-	print(queried_indices)
-	first_NN = cat_mod_id[queried_indices[2]]
-	print(first_NN)
-	print(utils.convert_idx_to_words(minibatch['raw_embedding_batch'][random_index]))
-	png_file = opts.png_dir % (first_NN[1], first_NN[1])
-	img=mpimg.imread(png_file)
-	imgplot = plt.imshow(img)
-	plt.show()
+		#add the embedding to the trained embeddings
+		embeddings = np.append(embeddings,txt_embedd_output.detach().cpu().numpy(),axis=0)
+		model_ids.append(model_id)
+		
+		iteration += 1
+
+	
+	n_neighbors = 10
+	model_ids = np.array(model_ids)
+	embeddings_fused = [(i,j) for i,j in zip(model_ids,embeddings)]
+	outputs_dict = {'caption_embedding_tuples': embeddings_fused, 
+                    'dataset_size': len(embeddings_fused)} 
+
+	(embeddings_matrix, labels, num_embeddings, label_counter) = ut.construct_embeddings_matrix(outputs_dict)
+	indices = ut._compute_nearest_neighbors_cosine(embeddings_matrix, embeddings_matrix, n_neighbors,True)
+	important_indices = indices[-num_of_retrieval::]
+	important_model_id = model_ids[-num_of_retrieval::]
+
+	caption_file = open('Retrieval/inp_captions.txt', 'w')
+	for q in range(num_of_retrieval):
+		
+		cur_model_id = important_model_id[q]
+		all_nn = important_indices[q]
+		
+		NN = np.argwhere(model_ids[all_nn] == cur_model_id)
+		print(" found correct one :",NN)
+		if(len(NN) < 1):
+			NN = important_indices[q][0]
+		else:
+			NN = NN[0]
+			NN = important_indices[q][NN]
+
+		q_caption = queried_captions[q]
+		q_model_id = embeddings_fused[NN][0]
+		sentence = utils.convert_idx_to_words(q_caption)
+		caption_file.write('{}\n'.format(sentence))
+
+		voxel_file = opts.png_dir % (q_model_id,q_model_id)
+		img = mpimg.imread(voxel_file)
+		imgplot = plt.imshow(img)
+		plt.savefig('Retrieval/{0}.png'.format(q))
+		plt.clf()
+
+	caption_file.close()
+
+
+
 
 
 def val(text_encoder, shape_encoder,opts,shape_raw,shape_mod,text_raw,text_mod):
@@ -91,11 +124,7 @@ def val(text_encoder, shape_encoder,opts,shape_raw,shape_mod,text_raw,text_mod):
     embedding_tuples=[]
     generator_val = gn.generator_minibatch(shape_raw,shape_mod,opts)   	
     for step, minibatch in enumerate(generator_val):
-
-        #raw_embedding_batch = torch.from_numpy(minibatch['raw_embedding_batch']).long().cuda()
         shape_batch = torch.from_numpy(minibatch['input']).permute(0,4,1,2,3).cuda()
-        #print("SIZE : ",shape_batch.size())
-        #text_encoder_outputs = text_encoder(raw_embedding_batch)
         shape_encoder_outputs = shape_encoder(shape_batch)
         for i in range(shape_batch.size()[0]):  
         	embedding_tuples.append((minibatch['model_list'][i],shape_encoder_outputs[i].data.cpu()))
@@ -103,61 +132,29 @@ def val(text_encoder, shape_encoder,opts,shape_raw,shape_mod,text_raw,text_mod):
     
     generator_val = gn.generator_minibatch(text_raw,text_mod,opts)    	
     for step, minibatch in enumerate(generator_val):
-
         raw_embedding_batch = torch.from_numpy(minibatch['input']).long().cuda()
-        #shape_batch = torch.from_numpy(minibatch['voxel_tensor_batch']).permute(0,4,1,2,3).cuda()
-        #print("SIZE : ",shape_batch.size())
         text_encoder_outputs = text_encoder(raw_embedding_batch)
-        #shape_encoder_outputs = shape_encoder(shape_batch)
+        
         for i in range(raw_embedding_batch.size()[0]):  
         	embedding_tuples.append((minibatch['model_list'][i],text_encoder_outputs[i].data.cpu()))
         	
 
-    """
-    batch_size = 100
-    params = {'batch_size':batch_size,
-          'shuffle': True,
-          'num_workers': 3,
-          'collate_fn' : collate_wrapper_val}
-
-    num_of_cap_per_model = 6
-    dat_loader = ShapeNetDataset_Validation(opts.val_inputs_dict,num_of_cap_per_model,opts)
-    validation_generator = torch.utils.data.DataLoader(dat_loader, **params)
-    print("start validation ")
-    for captions,shapes,model_ids,categories,labels in validation_generator:
-    	print(captions.size())
-    	#print(model_ids[0])
-    	#print(model_ids[model_ids==model_ids[0]])
-    	#input()
-    	raw_embedding_batch = captions.long().cuda()
-    	shape_batch = shapes.permute(0,4,1,2,3).cuda()
-    	text_encoder_outputs = text_encoder(raw_embedding_batch)
-    	shape_encoder_outputs = shape_encoder(shape_batch)
-    	for i in range(raw_embedding_batch.size()[0]):
-    		embedding_tuples.append((categories[i],model_ids[i],text_encoder_outputs[i].data.cpu()))
-    		if(i < shape_encoder_outputs.size()[0]):
-    			#print(shape_encoder_outputs.size())
-    			embedding_tuples.append((categories[i],model_ids[int(i*num_of_cap_per_model)],shape_encoder_outputs[i].data.cpu()))
-
-
-
-	
-    #caption, category, model_id, embedding
-	"""
+    
     outputs_dict = {'caption_embedding_tuples': embedding_tuples, 
                     'dataset_size': len(embedding_tuples)} 
 
-    print("length T-S Embeddings",len(embedding_tuples))
+    print("length Embeddings",len(embedding_tuples))
+
     n_neighbors = 10#6
     print("comp metric")
     data_set = "shapenet"
     metrics = ut.compute_metrics(data_set,outputs_dict,n_neighbors = n_neighbors,nm=1) 
 
-    #precision = np.mean(metrics[0])
+    
     print("precision for Text-to-Shape Embeddings {0} matches is : {1}".format(n_neighbors,metrics))
     #----------------------------------------------------------------------------------------------------
 
-    return metrics#precision
+    return metrics
    
    
 
@@ -184,7 +181,7 @@ def main():
 	
 	
 	
-	#writer = SummaryWriter(os.path.join(opts.tensorboard,'Encoder_not_normalized'))
+	writer = SummaryWriter(os.path.join(opts.tensorboard,'Encoder_not_normalized_CHAIR'))
 	#we basiaclly neglectthe problematic ones later in the dataloader
 	opts.probablematic_nrrd_path = cfg.DIR.PROBLEMATIC_NRRD_PATH
 	opts_val = copy.deepcopy(opts)
@@ -199,51 +196,7 @@ def main():
 	#ret_inputs_dict = utils.open_pickle(cfg.DIR.TEST_DATA_PATH)#processed_captions_test.p
 	opts_val.val_inputs_dict = val_inputs_dict#inputs_dict#
 
-	"""
-	print("keys :",val_inputs_dict['caption_tuples'][0])
-	seen_categories = []
-	different_mod_ids = []
-
-	for k in val_inputs_dict['caption_tuples']:
-		if(k[2] in different_mod_ids):
-			continue
-		else:
-			different_mod_ids.append(k[2])
-		#if(k[1] in seen_categories):
-		#	continue
-		#else:
-		#	seen_categories.append(k[1])
-
-	#print(len(seen_categories))
-	print(len(different_mod_ids))
-	#return
-	"""
-
-	###############################################
-	#Test purposes
-	#inputs_dict = val_inputs_dict
-	#ret_inputs_dict = val_inputs_dict
-	#val_inputs_dict = ret_inputs_dict
-	###############################################
-
-
-	#embeddings_trained = utils.open_pickle('test_embeddings.p')
-	#data_process_for_class = LBADataProcess
-	#val_data_process_for_class = LBADataProcess
-	#ret_data_process = LBADataProcess #retrieval process
-	#global train_queue, train_processes
-	#global val_queue, val_processes
-	#global ret_queue, ret_processes
-	#queue_capacity = cfg.CONST.QUEUE_CAPACITY
-	#queue_capacity = 100
-
-	#train_queue = Queue(queue_capacity)
-	#train_processes = utils.make_data_processes(data_process_for_class, train_queue, inputs_dict, opts, repeat=True)
-	#val_queue = Queue(queue_capacity)
-	#val_processes = utils.make_data_processes(val_data_process_for_class, val_queue, val_inputs_dict, opts_val, repeat=True)
-	#ret_queue = Queue(100)
-	#ret_processes = utils.make_data_processes(ret_data_process,ret_queue,ret_inputs_dict,opts,repeat=False)
-	#--------------------------------------------------------------
+	
 	
 
 	text_encoder = CNNRNNTextEncoder(vocab_size=inputs_dict['vocab_size']).cuda()
@@ -251,22 +204,27 @@ def main():
 
 	shape_gen_raw,shape_mod_list = gn.SS_generator(opts_val.val_inputs_dict, opts)
 	text_gen_raw,text_mod_list = gn.TS_generator(opts_val.val_inputs_dict, opts)
-	#if(load):
-		#text_encoder.load_state_dict(torch.load('models_metric_loss/txt_enc.pth'))
-		#shape_encoder.load_state_dict(torch.load('models_metric_loss/shape_enc.pth'))
+
+
+	if(load):
+		#text_encoder.load_state_dict(torch.load('OLD/models_metric_loss/txt_enc.pth'))
+		#shape_encoder.load_state_dict(torch.load('OLD/models_metric_loss/shape_enc.pth'))
+
+		#text_encoder.load_state_dict(torch.load('MODELS/not_normalized_BOTH/txt_enc_acc.pth'))
+		#shape_encoder.load_state_dict(torch.load('MODELS/not_normalized_BOTH/shape_enc_acc.pth'))
 
 		#text_encoder.load_state_dict(torch.load('models_sts_tst/txt_enc_loss.pth'))
 		#shape_encoder.load_state_dict(torch.load('models_sts_tst/shape_enc_loss.pth'))
-	#	text_encoder.load_state_dict(torch.load('models/txt_enc_loss.pth'))
-	#	shape_encoder.load_state_dict(torch.load('models/shape_enc_loss.pth'))
+		text_encoder.load_state_dict(torch.load('models/txt_enc_acc.pth'))
+		shape_encoder.load_state_dict(torch.load('models/shape_enc_acc.pth'))
 
+	#retrieval(text_encoder,val_inputs_dict,opts_val)
+	#return
 	#val(text_encoder,shape_encoder,opts_val,shape_gen_raw,shape_mod_list,text_gen_raw,text_mod_list)
+	
 	#return
-	#utils.kill_processes(val_queue, val_processes)
-	#return
-	#embeddings,cat_mod_id = utils.create_embedding_tuples(embeddings_trained)
-	#for i in range(0,200,3):
-	#	retrieval(val_queue,val_processes,text_encoder,embeddings_trained,opts,i,embeddings,cat_mod_id)
+
+	
 	
 	loss_Metric = Metric_Loss(opts, LBA_inverted_loss=cfg.LBA.INVERTED_LOSS, LBA_normalized=cfg.LBA.NORMALIZE, LBA_max_norm=cfg.LBA.MAX_NORM)
 
@@ -296,12 +254,9 @@ def main():
 		epoch_loss_TST = []
 		for captions,shapes,model_ids,categories,labels in training_generator:
 
-			#minibatch = train_queue.get()
-			#print(minibatch['caption_label_batch'])
-			#print("minibatch_shape",minibatch['caption_label_batch'].shape)
-			#return
+			
 			raw_embedding_batch = captions.long().cuda()#torch.Size([batch_size*2, 96])
-			#print(raw_embedding_batch.size())
+			
 			shape_batch = shapes.permute(0,4,1,2,3).cuda() #torch.Size([batch_size,4,32,32,32])
 			text_encoder_outputs = text_encoder(raw_embedding_batch)
 			shape_encoder_outputs = shape_encoder(shape_batch)
@@ -328,15 +283,12 @@ def main():
 		epoch_loss = np.mean(epoch_loss)
 		#epoch_loss = 0
 		print("LOSS",epoch_loss)
-		#writer.add_scalar('train loss',epoch_loss,epoch)
-		acc = 0
-		#if(epoch % 5 == 0):
-			#pass
+		writer.add_scalar('train loss',epoch_loss,epoch)
 		acc = val(text_encoder,shape_encoder,opts_val,shape_gen_raw,shape_mod_list,text_gen_raw,text_mod_list)
-		#writer.add_scalar('validation acc',acc,epoch)
+		writer.add_scalar('validation acc',acc,epoch)
 		text_encoder.train()
 		shape_encoder.train()
-		#print("TST {} and STS {} LOSS MEAN ".format(np.mean(epoch_loss_TST),np.mean(epoch_loss_STS)))
+		print("TST {} and STS {} LOSS MEAN ".format(np.mean(epoch_loss_TST),np.mean(epoch_loss_STS)))
 
 		if(best_acc < acc):
 			#best_loss = epoch_loss
@@ -518,4 +470,36 @@ def accuracy_test_purpose():
         	#embedding_tuples.append((minibatch['model_list'][i],shape_encoder_outputs[i].data.cpu().numpy()))
     
 
+
 """
+"""
+    batch_size = 100
+    params = {'batch_size':batch_size,
+          'shuffle': True,
+          'num_workers': 3,
+          'collate_fn' : collate_wrapper_val}
+
+    num_of_cap_per_model = 6
+    dat_loader = ShapeNetDataset_Validation(opts.val_inputs_dict,num_of_cap_per_model,opts)
+    validation_generator = torch.utils.data.DataLoader(dat_loader, **params)
+    print("start validation ")
+    for captions,shapes,model_ids,categories,labels in validation_generator:
+    	print(captions.size())
+    	#print(model_ids[0])
+    	#print(model_ids[model_ids==model_ids[0]])
+    	#input()
+    	raw_embedding_batch = captions.long().cuda()
+    	shape_batch = shapes.permute(0,4,1,2,3).cuda()
+    	text_encoder_outputs = text_encoder(raw_embedding_batch)
+    	shape_encoder_outputs = shape_encoder(shape_batch)
+    	for i in range(raw_embedding_batch.size()[0]):
+    		embedding_tuples.append((categories[i],model_ids[i],text_encoder_outputs[i].data.cpu()))
+    		if(i < shape_encoder_outputs.size()[0]):
+    			#print(shape_encoder_outputs.size())
+    			embedding_tuples.append((categories[i],model_ids[int(i*num_of_cap_per_model)],shape_encoder_outputs[i].data.cpu()))
+
+
+
+	
+    #caption, category, model_id, embedding
+	"""
