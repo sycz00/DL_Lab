@@ -23,7 +23,7 @@ from models.Encoders import CNNRNNTextEncoder, ShapeEncoder
 from multiprocessing import Process, Event 
 import time
 
-from torch.utils.tensorboard import SummaryWriter
+#from torch.utils.tensorboard import SummaryWriter
 
 from sklearn.neighbors import NearestNeighbors
 import matplotlib.pyplot as plt
@@ -184,7 +184,7 @@ def main():
 	
 	
 	
-	writer = SummaryWriter(os.path.join(opts.tensorboard,'Encoder_not_normalized'))
+	#writer = SummaryWriter(os.path.join(opts.tensorboard,'Encoder_not_normalized'))
 	#we basiaclly neglectthe problematic ones later in the dataloader
 	opts.probablematic_nrrd_path = cfg.DIR.PROBLEMATIC_NRRD_PATH
 	opts_val = copy.deepcopy(opts)
@@ -328,12 +328,12 @@ def main():
 		epoch_loss = np.mean(epoch_loss)
 		#epoch_loss = 0
 		print("LOSS",epoch_loss)
-		writer.add_scalar('train loss',epoch_loss,epoch)
+		#writer.add_scalar('train loss',epoch_loss,epoch)
 		acc = 0
 		#if(epoch % 5 == 0):
 			#pass
 		acc = val(text_encoder,shape_encoder,opts_val,shape_gen_raw,shape_mod_list,text_gen_raw,text_mod_list)
-		writer.add_scalar('validation acc',acc,epoch)
+		#writer.add_scalar('validation acc',acc,epoch)
 		text_encoder.train()
 		shape_encoder.train()
 		#print("TST {} and STS {} LOSS MEAN ".format(np.mean(epoch_loss_TST),np.mean(epoch_loss_STS)))
