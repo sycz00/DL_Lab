@@ -24,7 +24,7 @@ def _compute_nearest_neighbors_cosine(fit_embeddings_matrix, query_embeddings_ma
     if fit_eq_query is True:
         n_neighbors += 1
 
-    # print('Using unnormalized cosine distance')
+    
 
     # Argsort method
     # unnormalized_similarities = np.dot(query_embeddings_matrix, fit_embeddings_matrix.T)
@@ -34,8 +34,8 @@ def _compute_nearest_neighbors_cosine(fit_embeddings_matrix, query_embeddings_ma
     # indices = np.flip(indices, 1)
 
     # Argpartition method
-    query_embeddings_matrix = normalize(query_embeddings_matrix, axis=1)
-    fit_embeddings_matrix = normalize(fit_embeddings_matrix, axis=1)
+    #query_embeddings_matrix = normalize(query_embeddings_matrix, axis=1)
+    #fit_embeddings_matrix = normalize(fit_embeddings_matrix, axis=1)
      
     unnormalized_similarities = np.dot(query_embeddings_matrix, fit_embeddings_matrix.T)
     n_samples = unnormalized_similarities.shape[0]
@@ -84,34 +84,18 @@ def acc_test(indices,labels,n_neighbors,num_embeddings,num_true=1):
     return all_counts / num_embeddings#np.mean(bb)#
 
 def compute_metrics(dataset, embeddings_dict, n_neighbors=20,nm=1,metric='minkowski', concise=False):
-    """Compute all the metrics for the text encoder evaluation.
-    """
-    # assert len(embeddings_dict['caption_embedding_tuples']) < 10000
-    # Dont need two sort steps!! https://stackoverflow.com/questions/1915376/is-pythons-sorted-function-guaranteed-to-be-stable
-    # embeddings_dict['caption_embedding_tuples'] = sorted(embeddings_dict['caption_embedding_tuples'], key=lambda tup: tup[2])
-    # embeddings_dict['caption_embedding_tuples'] = sorted(embeddings_dict['caption_embedding_tuples'], key=lambda tup: tup[0].tolist()) 
-    #num_embeddings, label_to_model_idmodel_id_to_label
+    
     (embeddings_matrix, labels, num_embeddings, label_counter) = construct_embeddings_matrix(embeddings_dict)
-    #print("LABELS:",labels[labels == 0])
-    #print("label length",labels.shape)
-    #print("label counter ",label_counter)
-    #print('min embedding val:', np.amin(embeddings_matrix))
-    #print('max embedding val:', np.amax(embeddings_matrix))
-    #print('mean embedding (abs) val:', np.mean(np.absolute(embeddings_matrix)))
-
+    
     n_neighbors = n_neighbors
 
-    
     indices = _compute_nearest_neighbors_cosine(embeddings_matrix, embeddings_matrix, n_neighbors,True)
 
     print('Computing recall.')
     recall = acc_test(indices,labels,n_neighbors,num_embeddings,num_true=nm)
-    #pr_at_k = compute_pr_at_k(indices, labels, n_neighbors, num_embeddings)
     
-
-   
     return recall
-    #return pr_at_k  
+     
 
 
 def construct_embeddings_matrix(embeddings_dict):
@@ -136,7 +120,6 @@ def construct_embeddings_matrix(embeddings_dict):
     for idx, caption_tuple in enumerate(embeddings_dict['caption_embedding_tuples']):
         model_id, embedding = caption_tuple#model_id, embedding = caption_tuple
 
-        # Swap model ID and category depending on dataset
     
         # Add model ID to dict if it has not already been added
         #We ASSUME EACH MODEL_ID (WHICH IS A SPECIFIC SHAPE) BELONG TO ITS OWN INSTANCE-LEVEL label
@@ -145,7 +128,7 @@ def construct_embeddings_matrix(embeddings_dict):
             label_to_model_id[label_counter] = model_id
             label_counter += 1
 
-        # Update the embeddings matrix and labels vector
+        
         embeddings_matrix[idx] = embedding
         labels[idx] = model_id_to_label[model_id]
 
@@ -153,100 +136,6 @@ def construct_embeddings_matrix(embeddings_dict):
     return embeddings_matrix, labels, num_embeddings,label_counter
 
 
-def compute_pr_at_k(indices, labels, n_neighbors, num_embeddings, fit_labels=None):
-    
-    if fit_labels is None:
-        fit_labels = labels
-    num_correct = np.zeros((num_embeddings, n_neighbors))
-    rel_score = np.zeros((num_embeddings, n_neighbors))
-    label_counter = np.bincount(fit_labels)
-    num_relevant = label_counter[labels]
-    rel_score_ideal = np.zeros((num_embeddings, n_neighbors))
-
-    # Assumes that self is not included in the nearest neighbors
-    for i in range(num_embeddings):
-        label = labels[i]  # Correct class of the query
-        nearest = indices[i]  # Indices of nearest neighbors
-        nearest_classes = [fit_labels[x] for x in nearest]  # Class labels of the nearest neighbors
-        # for now binary relevance
-        num_relevant_clamped = min(num_relevant[i], n_neighbors)
-        rel_score[i] = np.equal(np.asarray(nearest_classes), label)
-        rel_score_ideal[i][0:num_relevant_clamped] = 1
-
-        for k in range(n_neighbors):
-            # k goes from 0 to n_neighbors-1
-            correct_indicator = np.equal(np.asarray(nearest_classes[0:(k + 1)]), label)  # Get true (binary) labels
-            num_correct[i, k] = np.sum(correct_indicator)
-
-    # Compute our dcg
-    dcg_n = np.exp2(rel_score) - 1
-    dcg_d = np.log2(np.arange(1,n_neighbors+1)+1)
-    dcg = np.cumsum(dcg_n/dcg_d,axis=1)
-    # Compute ideal dcg
-    dcg_n_ideal = np.exp2(rel_score_ideal) - 1
-    dcg_ideal = np.cumsum(dcg_n_ideal/dcg_d,axis=1)
-    # Compute ndcg
-    ndcg = dcg / dcg_ideal
-    ave_ndcg_at_k = np.sum(ndcg, axis=0) / num_embeddings
-    recall_rate_at_k = np.sum(num_correct > 0, axis=0) / num_embeddings
-    recall_at_k = np.sum(num_correct/num_relevant[:,None], axis=0) / num_embeddings
-    precision_at_k = np.sum(num_correct/np.arange(1,n_neighbors+1), axis=0) / num_embeddings
-    #print('recall_at_k shape:', recall_at_k.shape)
-    print('     k: precision recall recall_rate ndcg')
-    for k in range(n_neighbors):
-        print('pr @ {}: {} {} {} {}'.format(k + 1, precision_at_k[k], recall_at_k[k], recall_rate_at_k[k], ave_ndcg_at_k[k]))
-    Metrics = collections.namedtuple('Metrics', 'precision recall recall_rate ndcg')
-    return Metrics(precision_at_k, recall_at_k, recall_rate_at_k, ave_ndcg_at_k)
-
-def print_model_id_info(model_id_to_label):
-    print('Number of models (or categories if synthetic dataset):', len(model_id_to_label.keys()))
-    print('')
-
-    
-    
-def print_nearest_info(query_model_ids, nearest_model_ids, query_sentences, nearest_sentences,
-                       render_dir=None):
-    """Print out nearest model IDs for random queries.
-
-    Args:
-        labels: 1D array containing the label
-    """
-    # Make directory for renders
-    if render_dir is None:
-        render_dir = os.path.join('/tmp', datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
-    os.makedirs(render_dir)
-
-    num_queries = 25
-    assert len(nearest_model_ids) > num_queries
-    perm = np.random.permutation(len(nearest_model_ids))
-    for i in perm[:num_queries]:
-        query_model_id = query_model_ids[i]
-        nearest = nearest_model_ids[i]
-
-        # Make directory for the query
-        cur_render_dir = os.path.join(render_dir, query_model_id + ('-%04d' % i))
-        os.makedirs(cur_render_dir)
-
-        with open(os.path.join(cur_render_dir, 'nearest_neighbor_text.txt'), 'w') as f:
-            f.write('-------- query {} ----------\n'.format(i))
-            f.write('Query: {}\n'.format(query_model_id))
-            f.write('Nearest:\n')
-            for model_id in nearest:
-                f.write('\t{}\n'.format(model_id))
-            render.render_model_id([query_model_id] + nearest, out_dir=cur_render_dir, check=False)
-
-            f.write('')
-            query_sentence = query_sentences[i]
-            f.write('Query: {}\n'.format(query_sentence))
-            for sentence in nearest_sentences[i]:
-                f.write('\t{}\n'.format(sentence))
-            f.write('')
-
-        ids_only_fname = os.path.join(cur_render_dir, 'ids_only.txt')
-        with open(ids_only_fname, 'w') as f:
-            f.write('{}\n'.format(query_model_id))
-            for model_id in nearest:
-                f.write('{}\n'.format(model_id))
 ################################################################################################################
 def main():
     

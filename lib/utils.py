@@ -6,9 +6,12 @@ import json
 import time 
 import collections
 import datetime 
-import torch 
-from lib.render import render_model_id #lib.render import render_model_id 
+import torch
+from render import render_model_id #lib.render import render_model_id 
+import sys
+sys.path.append("..")
 from config import cfg
+#from config import cfg
 
 import pdb 
 
@@ -33,19 +36,23 @@ def convert_idx_to_words(data_list):
 
     return sentences
 
-def create_embedding_tuples(trained_embeddings): 
+def create_embedding_tuples(trained_embeddings,embedd_type='text'): 
     #print(trained_embeddings.keys())
     dim_emb = trained_embeddings['dataset_size']
     embeddings_matrix = np.zeros((dim_emb, 128))
     cat_mod_id = []
-
+    raw_caption = []
     for idx,entry in enumerate(trained_embeddings['caption_embedding_tuples']):
         
-        embeddings_matrix[idx] = entry[3]
-        cat_mod_id.append(entry[2])
+        embeddings_matrix[idx] = entry[1]
+        cat_mod_id.append(entry[0])
+        if(embedd_type == 'text'):
+            raw_caption.append(entry[2])
 
-        
-    return embeddings_matrix,cat_mod_id
+    if(embedd_type == 'text'):
+        return embeddings_matrix,cat_mod_id,raw_caption    
+    else:
+        return embeddings_matrix,cat_mod_id
 
 def make_data_processes(data_process_class, queue, data_paths, opts, repeat): 
     
@@ -76,31 +83,36 @@ def kill_processes(queue, processes):
     print('killing processes.') 
     for p in processes:
         p.terminate() 
-def create_pickle_embedding(mat):
-    print("Create pickle")
+
+def create_pickle_embedding(mat,embedd_type ='shape'):
+    print("start pickle !")
     dict_ = {}
     seen_models = []
     tuples = []
     for ele in mat:
-        for i in range(len(ele[2])-1):
-            
-            
-            if(ele[2][i] in seen_models):
-                continue
+        
+        if(ele[0] in seen_models):
+            continue
+        else:
+            seen_models.append(ele[0])
+            if(embedd_type == 'text_only'):
+                tuples.append((ele[0],ele[1],ele[2]))
             else:
-                seen_models.append(ele[2][i])
-                tuples.append((ele[0][i],ele[1][i],ele[2][i],ele[3][i]))
+                tuples.append((ele[0],ele[1]))
+            
+        
+    
     dict_ = {
     'caption_embedding_tuples': tuples,
     'dataset_size':len(tuples)
     }
 
-    output = open('test.p', 'wb')
+    output = open('{}.p'.format(embedd_type), 'wb')
     pickle.dump(dict_, output)
     output.close()
 
 
-    print("DONE")
+    print("created pickle file for {}".format(embedd_type))
 # read nrrd data 
 def read_nrrd(nrrd_filename):
     """

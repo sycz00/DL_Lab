@@ -18,7 +18,7 @@ import lib.accuracy as ut
 import lib.generators as gn
 import models
 from lib.custom_losses import Metric_Loss ,LBA_Loss
-from lib.data_process_encoder import LBADataProcess
+#from lib.data_process_encoder import LBADataProcess
 from models.Encoders import CNNRNNTextEncoder, ShapeEncoder
 from multiprocessing import Process, Event 
 import time
@@ -34,81 +34,266 @@ from lib.DataLoader import ShapeNetDataset,  collate_wrapper_val, collate_wrappe
 
 
 
+#mat.append((raw_embedding_batch.data.cpu(),minibatch['category_list'],minibatch['model_list'],shape_encoder_outputs.data.cpu()))	
+def create_embeddings_pickle(text_encoder, shape_encoder,opts,shape_raw,shape_mod,text_raw,text_mod):
+	text_encoder.load_state_dict(torch.load('MODELS/not_norm_metric_tst/txt_enc_acc.pth'))
+	shape_encoder.load_state_dict(torch.load('MODELS/not_norm_metric_tst/shape_enc_acc.pth'))
+
+	text_encoder.eval()
+	shape_encoder.eval()
+
+	embedding_tuples=[]
+	generator_val = gn.generator_minibatch(shape_raw,shape_mod,opts)
+	for step, minibatch in enumerate(generator_val):
+		shape_batch = torch.from_numpy(minibatch['input']).permute(0,4,1,2,3).cuda()
+		shape_encoder_outputs = shape_encoder(shape_batch)
+		for i in range(shape_batch.size()[0]):
+			embedding_tuples.append((minibatch['model_list'][i],shape_encoder_outputs[i].data.cpu()))
+
+
+	utils.create_pickle_embedding(embedding_tuples,embedd_type ='shape_only')
 	
+	embedding_tuples_2 = []
+	generator_val = gn.generator_minibatch(text_raw,text_mod,opts)
+	for step, minibatch in enumerate(generator_val):
+		raw_embedding_batch = torch.from_numpy(minibatch['input']).long().cuda()
+		text_encoder_outputs = text_encoder(raw_embedding_batch)
+		for i in range(raw_embedding_batch.size()[0]):
+			embedding_tuples_2.append((minibatch['model_list'][i],text_encoder_outputs[i].data.cpu(),raw_embedding_batch[i].data.cpu()))
+			embedding_tuples.append((minibatch['model_list'][i],text_encoder_outputs[i].data.cpu()))
+
+	utils.create_pickle_embedding(embedding_tuples_2, embedd_type ='text_only')
+	utils.create_pickle_embedding(embedding_tuples,embedd_type ='text_and_shape')
 
 
-def retrieval(text_encoder,ret_dict,opts):
-	#text_encoder.load_state_dict(torch.load('models/txt_enc.pth'))
-	#shape_encoder.load_state_dict(torch.load('models/shape_enc.pth'))
+
+def retrieval(text_encoder,shape_encoder,ret_dict,opts,ret_type='text_to_shape'):
+	text_encoder.load_state_dict(torch.load('MODELS/not_normalized_normpenalty/txt_enc_acc.pth'))
+	shape_encoder.load_state_dict(torch.load('MODELS/not_normalized_normpenalty/shape_enc_acc.pth'))
 	text_encoder.eval() 
+	shape_encoder.eval()
 	
-	iteration = 0
+	
+	if(ret_type=='text_to_shape'):
+		embeddings_trained = utils.open_pickle('shape_only.p')
+		embeddings, model_ids = utils.create_embedding_tuples(embeddings_trained,embedd_type='shape')
+	
+		queried_captions = []
 
-	embeddings_trained = utils.open_pickle('DOT_AGAIN_EMBEDDINGS.p')
-	embeddings, model_ids = utils.create_embedding_tuples(embeddings_trained)
-	#print(model_ids)
-	queried_captions = []
-
-	print("start retrieval")
-	num_of_captions = len(ret_dict['caption_tuples'])
-	num_of_retrieval = 10
-	while(iteration < num_of_retrieval):
+		print("start retrieval")
+		num_of_captions = len(ret_dict['caption_tuples'])
+		num_of_retrieval = 10
+		iteration = 0
+		while(iteration < num_of_retrieval):
 		
-		rand_ind = np.random.randint(0,num_of_captions)
-		caption_tuple = ret_dict['caption_tuples'][rand_ind]
-		caption = caption_tuple[0]
-		model_id = caption_tuple[2]
-		queried_captions.append(caption)
+			rand_ind = np.random.randint(0,num_of_captions)
+			caption_tuple = ret_dict['caption_tuples'][rand_ind]
+			caption = caption_tuple[0]
+			model_id = caption_tuple[2]
+			queried_captions.append(caption)
 	
-		input_caption = torch.from_numpy(caption).unsqueeze(0).long().cuda()
+			input_caption = torch.from_numpy(caption).unsqueeze(0).long().cuda()
 		
 	
-		txt_embedd_output = text_encoder(input_caption)
+			txt_embedd_output = text_encoder(input_caption)
 
-		#add the embedding to the trained embeddings
-		embeddings = np.append(embeddings,txt_embedd_output.detach().cpu().numpy(),axis=0)
-		model_ids.append(model_id)
+			#add the embedding to the trained embeddings
+			embeddings = np.append(embeddings,txt_embedd_output.detach().cpu().numpy(),axis=0)
+			model_ids.append(model_id)
 		
-		iteration += 1
+			iteration += 1
 
 	
-	n_neighbors = 10
-	model_ids = np.array(model_ids)
-	embeddings_fused = [(i,j) for i,j in zip(model_ids,embeddings)]
-	outputs_dict = {'caption_embedding_tuples': embeddings_fused, 
+		n_neighbors = 10
+		model_ids = np.array(model_ids)
+		embeddings_fused = [(i,j) for i,j in zip(model_ids,embeddings)]
+		outputs_dict = {'caption_embedding_tuples': embeddings_fused, 
                     'dataset_size': len(embeddings_fused)} 
 
-	(embeddings_matrix, labels, num_embeddings, label_counter) = ut.construct_embeddings_matrix(outputs_dict)
-	indices = ut._compute_nearest_neighbors_cosine(embeddings_matrix, embeddings_matrix, n_neighbors,True)
-	important_indices = indices[-num_of_retrieval::]
-	important_model_id = model_ids[-num_of_retrieval::]
+		(embeddings_matrix, labels, num_embeddings, label_counter) = ut.construct_embeddings_matrix(outputs_dict)
+		indices = ut._compute_nearest_neighbors_cosine(embeddings_matrix, embeddings_matrix, n_neighbors,True)
+		important_indices = indices[-num_of_retrieval::]
+		important_model_id = model_ids[-num_of_retrieval::]
 
-	caption_file = open('Retrieval/inp_captions.txt', 'w')
-	for q in range(num_of_retrieval):
+		caption_file = open('Retrieval/text_to_shape/inp_captions.txt', 'w')
+		for q in range(num_of_retrieval):
 		
-		cur_model_id = important_model_id[q]
-		all_nn = important_indices[q]
+			cur_model_id = important_model_id[q]
+			all_nn = important_indices[q]
 		
-		NN = np.argwhere(model_ids[all_nn] == cur_model_id)
-		print(" found correct one :",NN)
-		if(len(NN) < 1):
-			NN = important_indices[q][0]
-		else:
-			NN = NN[0]
-			NN = important_indices[q][NN]
+			NN = np.argwhere(model_ids[all_nn] == cur_model_id)
+			print(" found correct one :",NN)
+			if(len(NN) < 1):
+				NN = important_indices[q][0]
+			else:
+				NN = NN[0][0]
+				NN = important_indices[q][NN]
 
-		q_caption = queried_captions[q]
-		q_model_id = embeddings_fused[NN][0]
-		sentence = utils.convert_idx_to_words(q_caption)
-		caption_file.write('{}\n'.format(sentence))
+			q_caption = queried_captions[q]
+			q_model_id = embeddings_fused[NN][0]
+			sentence = utils.convert_idx_to_words(q_caption)
+			caption_file.write('{}\n'.format(sentence))
 
-		voxel_file = opts.png_dir % (q_model_id,q_model_id)
-		img = mpimg.imread(voxel_file)
-		imgplot = plt.imshow(img)
-		plt.savefig('Retrieval/{0}.png'.format(q))
-		plt.clf()
+			voxel_file = opts.png_dir % (q_model_id,q_model_id)
+			img = mpimg.imread(voxel_file)
+			imgplot = plt.imshow(img)
+			plt.savefig('Retrieval/text_to_shape/{0}.png'.format(q))
+			plt.clf()
 
-	caption_file.close()
+		caption_file.close()
+
+
+	elif(ret_type=='shape_to_text'):
+
+		embeddings_trained = utils.open_pickle('text_only.p')
+		embeddings, model_ids, raw_caption = utils.create_embedding_tuples(embeddings_trained,embedd_type='text')
+	
+		queried_shapes = []
+
+		print("start retrieval")
+		num_of_captions = len(ret_dict['caption_tuples'])
+		num_of_retrieval = 10
+		iteration = 0
+		while(iteration < num_of_retrieval):
+		
+			rand_ind = np.random.randint(0,num_of_captions)
+			caption_tuple = ret_dict['caption_tuples'][rand_ind]
+			#caption = caption_tuple[0]
+			model_id = caption_tuple[2]
+
+			cur_shape = utils.load_voxel(None, model_id, opts)
+			queried_shapes.append(cur_shape)
+			input_shape = torch.from_numpy(cur_shape).unsqueeze(0).permute(0,4,1,2,3).float().cuda()
+			#input_caption = torch.from_numpy(caption).unsqueeze(0).long().cuda()
+		
+	
+			#txt_embedd_output = text_encoder(input_caption)
+			shape_embedd_output = shape_encoder(input_shape)
+
+			#add the embedding to the trained embeddings
+			embeddings = np.append(embeddings,shape_embedd_output.detach().cpu().numpy(),axis=0)
+			model_ids.append(model_id)
+		
+			iteration += 1
+
+	
+		n_neighbors = 10
+		model_ids = np.array(model_ids)
+		embeddings_fused = [(i,j) for i,j in zip(model_ids,embeddings)]
+		outputs_dict = {'caption_embedding_tuples': embeddings_fused, 
+                    'dataset_size': len(embeddings_fused)} 
+
+		(embeddings_matrix, labels, num_embeddings, label_counter) = ut.construct_embeddings_matrix(outputs_dict)
+		indices = ut._compute_nearest_neighbors_cosine(embeddings_matrix, embeddings_matrix, n_neighbors,True)
+		important_indices = indices[-num_of_retrieval::]
+		important_model_id = model_ids[-num_of_retrieval::]
+
+		caption_file = open('Retrieval/shape_to_text/inp_captions.txt', 'w')
+		for q in range(num_of_retrieval):
+		
+			cur_model_id = important_model_id[q]
+			all_nn = important_indices[q]
+		
+			NN = np.argwhere(model_ids[all_nn] == cur_model_id)
+			print(" found correct one :",NN)
+			if(len(NN) < 1):
+				NN = important_indices[q][0]
+			else:
+				NN = NN[0][0]
+				NN = important_indices[q][NN]
+
+			q_shape = queried_shapes[q]
+			q_caption = raw_caption[NN].data.numpy()
+			q_model_id = embeddings_fused[NN][0]
+			sentence = utils.convert_idx_to_words(q_caption)
+			caption_file.write('{}\n'.format(sentence))
+
+			voxel_file = opts.png_dir % (q_model_id,q_model_id)
+			img = mpimg.imread(voxel_file)
+			imgplot = plt.imshow(img)
+			plt.savefig('Retrieval/shape_to_text/{0}.png'.format(q))
+			plt.clf()
+
+		caption_file.close()
+	elif(ret_type=='shape_to_shape'):
+		embeddings_trained = utils.open_pickle('shape_only.p')
+		embeddings, model_ids = utils.create_embedding_tuples(embeddings_trained,embedd_type='shape')
+	
+		queried_shapes = []
+
+		print("start retrieval")
+		num_of_captions = len(ret_dict['caption_tuples'])
+		num_of_retrieval = 10
+		iteration = 0
+		while(iteration < num_of_retrieval):
+		
+			rand_ind = np.random.randint(0,num_of_captions)
+			caption_tuple = ret_dict['caption_tuples'][rand_ind]
+			#caption = caption_tuple[0]
+			model_id = caption_tuple[2]
+			#queried_captions.append(caption)
+	
+			cur_shape = utils.load_voxel(None, model_id, opts)
+			queried_shapes.append(model_id)
+			input_shape = torch.from_numpy(cur_shape).unsqueeze(0).permute(0,4,1,2,3).float().cuda()
+			shape_embedd_output = shape_encoder(input_shape)
+
+
+			#add the embedding to the trained embeddings
+			embeddings = np.append(embeddings,shape_embedd_output.detach().cpu().numpy(),axis=0)
+			model_ids.append(model_id)
+		
+			iteration += 1
+
+	
+		n_neighbors = 10
+		model_ids = np.array(model_ids)
+		embeddings_fused = [(i,j) for i,j in zip(model_ids,embeddings)]
+		outputs_dict = {'caption_embedding_tuples': embeddings_fused, 
+                    'dataset_size': len(embeddings_fused)} 
+
+		(embeddings_matrix, labels, num_embeddings, label_counter) = ut.construct_embeddings_matrix(outputs_dict)
+		indices = ut._compute_nearest_neighbors_cosine(embeddings_matrix, embeddings_matrix, n_neighbors,True)
+		important_indices = indices[-num_of_retrieval::]
+		important_model_id = model_ids[-num_of_retrieval::]
+
+		
+		for q in range(num_of_retrieval):
+		
+			cur_model_id = important_model_id[q]
+			all_nn = important_indices[q]
+		
+			NN = np.argwhere(model_ids[all_nn] == cur_model_id)
+			print(" found correct one :",NN)
+			if(len(NN) < 1):
+				NN = important_indices[q][0]
+			else:
+				NN = NN[0][0]
+				NN = important_indices[q][NN]
+
+			
+			q_model_id = embeddings_fused[NN][0]
+			q_shape = queried_shapes[q] #this is the model id of quieried shape
+			
+
+			voxel_file = opts.png_dir % (q_model_id,q_model_id)
+			img = mpimg.imread(voxel_file)
+			imgplot = plt.imshow(img)
+			plt.savefig('Retrieval/shape_to_shape/ret_{0}.png'.format(q))
+			plt.clf()
+
+			voxel_file = opts.png_dir % (q_shape,q_shape)
+			img = mpimg.imread(voxel_file)
+			imgplot = plt.imshow(img)
+			plt.savefig('Retrieval/shape_to_shape/inp_{0}.png'.format(q))
+			plt.clf()
+
+		
+
+
+
+
+
 
 
 
@@ -145,8 +330,21 @@ def val(text_encoder, shape_encoder,opts,shape_raw,shape_mod,text_raw,text_mod):
 
     print("length Embeddings",len(embedding_tuples))
 
+
+    n_neighbors = 20#6
+    print("comp metric 10")
+    data_set = "shapenet"
+    metrics = ut.compute_metrics(data_set,outputs_dict,n_neighbors = n_neighbors,nm=1) 
+    print("precision for Text-to-Shape Embeddings {0} matches is : {1}".format(n_neighbors,metrics))
+
     n_neighbors = 10#6
-    print("comp metric")
+    print("comp metric 10")
+    data_set = "shapenet"
+    metrics = ut.compute_metrics(data_set,outputs_dict,n_neighbors = n_neighbors,nm=1) 
+    print("precision for Text-to-Shape Embeddings {0} matches is : {1}".format(n_neighbors,metrics))
+
+    n_neighbors = 5#6
+    print("comp metric 5")
     data_set = "shapenet"
     metrics = ut.compute_metrics(data_set,outputs_dict,n_neighbors = n_neighbors,nm=1) 
 
@@ -174,14 +372,14 @@ def main():
 	opts.LBA_n_captions_per_model = 2 #as stated in the paper
 	opts.LBA_model_type = cfg.LBA.MODEL_TYPE
 	opts.LBA_cosin_dist = cfg.LBA.COSINE_DIST
-	opts.rho = cfg.LBA.METRIC_MULTIPLIER
+	opts.rho = .5#cfg.LBA.METRIC_MULTIPLIER
 	opts.learning_rate = cfg.TRAIN.LEARNING_RATE
 
 	
 	
 	
 	
-	writer = SummaryWriter(os.path.join(opts.tensorboard,'Encoder_not_normalized_CHAIR'))
+	writer = SummaryWriter(os.path.join(opts.tensorboard,'Encoder_no_norm_metric_lba_full'))
 	#we basiaclly neglectthe problematic ones later in the dataloader
 	opts.probablematic_nrrd_path = cfg.DIR.PROBLEMATIC_NRRD_PATH
 	opts_val = copy.deepcopy(opts)
@@ -205,24 +403,24 @@ def main():
 	shape_gen_raw,shape_mod_list = gn.SS_generator(opts_val.val_inputs_dict, opts)
 	text_gen_raw,text_mod_list = gn.TS_generator(opts_val.val_inputs_dict, opts)
 
-
-	if(load):
-		#text_encoder.load_state_dict(torch.load('OLD/models_metric_loss/txt_enc.pth'))
-		#shape_encoder.load_state_dict(torch.load('OLD/models_metric_loss/shape_enc.pth'))
-
-		#text_encoder.load_state_dict(torch.load('MODELS/not_normalized_BOTH/txt_enc_acc.pth'))
-		#shape_encoder.load_state_dict(torch.load('MODELS/not_normalized_BOTH/shape_enc_acc.pth'))
-
-		#text_encoder.load_state_dict(torch.load('models_sts_tst/txt_enc_loss.pth'))
-		#shape_encoder.load_state_dict(torch.load('models_sts_tst/shape_enc_loss.pth'))
-		text_encoder.load_state_dict(torch.load('models/txt_enc_acc.pth'))
-		shape_encoder.load_state_dict(torch.load('models/shape_enc_acc.pth'))
-
-	#retrieval(text_encoder,val_inputs_dict,opts_val)
-	#return
-	#val(text_encoder,shape_encoder,opts_val,shape_gen_raw,shape_mod_list,text_gen_raw,text_mod_list)
+	#create_embeddings_pickle(text_encoder,shape_encoder,opts_val,shape_gen_raw,shape_mod_list,text_gen_raw,text_mod_list)
 	
+	if(load):
+		#text_encoder.load_state_dict(torch.load('MODELS/not_norm_metric_tst/txt_enc_acc.pth'))
+		#shape_encoder.load_state_dict(torch.load('MODELS/not_norm_metric_tst/shape_enc_acc.pth'))
+
+		text_encoder.load_state_dict(torch.load('MODELS/METRIC_ONLY/txt_enc_loss.pth'))
+		shape_encoder.load_state_dict(torch.load('MODELS/METRIC_ONLY/shape_enc_loss.pth'))
+
+		#text_encoder.load_state_dict(torch.load('MODELS/not_normalized_BOTH_tst_sts/txt_enc_acc.pth'))
+		#shape_encoder.load_state_dict(torch.load('MODELS/not_normalized_BOTH_tst_sts/shape_enc_acc.pth'))
+
+
+	#retrieval(text_encoder,shape_encoder,val_inputs_dict,opts_val,ret_type='text_to_shape')
 	#return
+	val(text_encoder,shape_encoder,opts_val,shape_gen_raw,shape_mod_list,text_gen_raw,text_mod_list)
+	
+	return
 
 	
 	
@@ -238,10 +436,10 @@ def main():
 	#text_encoder.eval()
 	#shape_encoder.eval()
 	
-	best_loss = np.inf
-	params_2 = {'batch_size': 256,
+	best_loss = np.inf8
+	params_2 = {'batch_size': 100,
           'shuffle': True,
-          'num_workers': 5,
+          'num_workers': 4,
           'collate_fn' : collate_wrapper_train}
 	best_acc = 0.0
 	dat_loader = ShapeNetDataset(inputs_dict,2,opts)
@@ -262,14 +460,14 @@ def main():
 			shape_encoder_outputs = shape_encoder(shape_batch)
 			caption_labels_batch = labels.long().cuda()
 
-			#mat.append((raw_embedding_batch.data.cpu(),minibatch['category_list'],minibatch['model_list'],shape_encoder_outputs.data.cpu()))
+			
 			metric_loss = loss_Metric(text_encoder_outputs, shape_encoder_outputs)
-			TST_loss, STS_loss = loss_TST(text_encoder_outputs, shape_encoder_outputs,caption_labels_batch) 
+			TST_loss,STS_loss = loss_TST(text_encoder_outputs, shape_encoder_outputs,caption_labels_batch) 
 			
 
-			complete_loss = (TST_loss+STS_loss) + opts.rho * metric_loss
+			complete_loss =  (TST_loss+STS_loss) + opts.rho * metric_loss
 			
-			epoch_loss_STS.append(STS_loss.item())
+			#epoch_loss_STS.append(STS_loss.item())
 			epoch_loss_TST.append(TST_loss.item())
 			
 			epoch_loss.append(complete_loss.item())
@@ -288,7 +486,7 @@ def main():
 		writer.add_scalar('validation acc',acc,epoch)
 		text_encoder.train()
 		shape_encoder.train()
-		print("TST {} and STS {} LOSS MEAN ".format(np.mean(epoch_loss_TST),np.mean(epoch_loss_STS)))
+		print("TST {} and STS LOSS MEAN ".format(np.mean(epoch_loss_TST)))#,np.mean(epoch_loss_STS)
 
 		if(best_acc < acc):
 			#best_loss = epoch_loss
@@ -303,7 +501,7 @@ def main():
 			torch.save(shape_encoder.state_dict(), 'models/shape_enc_loss.pth')
 			print("SAVED MODELS! LOSS ")
 
-	#utils.create_pickle_embedding(mat)
+
            
         
 

@@ -110,7 +110,10 @@ class ShapeNetDataset(Dataset):
             cur_model_id = selected_tuples[0][2]
             cur_category = selected_tuples[0][1]
 
-            #if(cur_category == '3d734hd'):
+            #04379243 CLASS : TABLE
+            #03001627 CLASS : CHAIR
+
+            #if(cur_category == '04379243'):
             #    db_ind = np.random.randint(self.num_data)
             #    continue
 
@@ -126,18 +129,12 @@ class ShapeNetDataset(Dataset):
         return selected_tuples[0][0],selected_tuples[1][0], cur_shape, cur_model_id, cur_category
 
        
-    
+"""   
 class ShapeNetDataset_Validation(Dataset):
-    """Face Landmarks dataset."""
+    
 
     def __init__(self, data_dict, cap_per_model=4,opts=None,problematic_ones=None, transform=None):
-        """
-        Args:
-            csv_file (string): Path to the csv file with annotations.
-            root_dir (string): Directory with all the images.
-            transform (callable, optional): Optional transform to be applied
-                on a sample.
-        """
+        
         self.opts = opts
         self.caption_matches = data_dict['caption_matches']
         self.matches_keys = list(self.caption_matches.keys())
@@ -193,7 +190,7 @@ class ShapeNetDataset_Validation(Dataset):
         selected_tuples = [s[0] for s in selected_tuples]
         return selected_tuples, cur_shape, cur_model_id, cur_category
 
-
+"""
 
 #Test ---------------
 if __name__ == "__main__":

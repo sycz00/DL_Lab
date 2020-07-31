@@ -16,9 +16,11 @@ def TS_generator(val_inputs_dict, opts):
     seen_captions = []
 	#label_counter = 0
     probablematic_nrrd_path = cfg.DIR.PROBLEMATIC_NRRD_PATH
+
     with open(probablematic_nrrd_path, 'rb') as f: 
         bad_model_ids = pickle.load(f)
 
+    
     for cur_tup in val_inputs_dict['caption_tuples']:
         
         cur_caption = tuple(cur_tup[0].tolist())
@@ -30,6 +32,9 @@ def TS_generator(val_inputs_dict, opts):
         #if(cur_tup[1] == '04379243'):
             #continue
 
+        #cur_caption_matches_id = val_inputs_dict['caption_matches'][cur_tup[2]]
+        #print(len(cur_caption_matches_id))
+        
         if cur_caption not in seen_captions:
             
             seen_captions.append(cur_caption)
@@ -44,22 +49,7 @@ def TS_generator(val_inputs_dict, opts):
     #raw_shape_list = [tup[2] for tup in caption_tuples]
     model_list = [tup[0] for tup in caption_tuples]
     return raw_caption_list, model_list
-    """
-    n_captions = len(raw_caption_list)
-    n_loop_captions = n_captions - (n_captions % opts.batch_size)
-    print('number of captions: {0}'.format(n_captions))
-    print('number of captions to loop through for validation: {0}'.format(n_loop_captions))
-    print('number of batches to loop through for validation: {0}'.format(n_loop_captions/opts.batch_size))
-    for start in range(0, n_loop_captions, opts.batch_size):
-        captions = raw_caption_list[start:(start + opts.batch_size)]
-        #shapes = raw_shape_list[start:(start + opts.batch_size)]
-        minibatch = {
-        'raw_embedding_batch': np.asarray(captions),
-        #'voxel_tensor_batch': np.array(shapes).astype(np.float32) ,
-        'model_list': model_list[start:(start + opts.batch_size)]
-        }
-        yield minibatch
-    """
+    
 
 def SS_generator(val_inputs_dict, opts):
     
