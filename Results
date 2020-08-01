@@ -1,6 +1,6 @@
                     Recall 5-k    Recall 10-k    Recall 20-k
 Metric Loss only :  9.12%           15.37%          24.95%
-Metric Loss and TST   9.29%         15.7.1%           25.21
+Metric Loss and TST   9.29%         15.71%           25.21
 
 RETRIEVAL :
                   text-to-shape       shape-to-text
