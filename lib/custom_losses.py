@@ -160,9 +160,9 @@ class Semisup_Loss(nn.Module):
 
 class LBA_Loss(nn.Module):
 
-    def __init__(self, lmbda=1.0, LBA_model_type='MM', batch_size=None):
+    def __init__(self, lmbda=1.0, batch_size=None):
         super(LBA_Loss, self).__init__() 
-        self.LBA_model_type = LBA_model_type 
+        
         self.lmbda = lmbda
         self.batch_size = batch_size 
         self.semisup_loss = Semisup_Loss(self.lmbda, lba_dist_type='standard')
@@ -202,35 +202,33 @@ class Metric_Loss(nn.Module):
     """
     used only for training 
     """
-    def __init__(self, opts, LBA_inverted_loss=True, LBA_normalized=True, LBA_max_norm=None):
+    def __init__(self, opts):
         super(Metric_Loss, self).__init__() 
-        # either is true 
-        assert (LBA_inverted_loss is True) or (LBA_normalized is True)
+        
+
         assert opts.LBA_n_captions_per_model == 2 
-        self.LBA_inverted_loss = LBA_inverted_loss 
-        self.LBA_normalized = LBA_normalized
+        
         self.dataset = opts.dataset
         self.LBA_n_captions_per_model = opts.LBA_n_captions_per_model
         self.batch_size = opts.batch_size
-        self.LBA_cosin_dist = opts.LBA_cosin_dist
-        if self.dataset == 'primitives':
-            self.LBA_n_primitive_shapes_per_category = opts.LBA_n_primitive_shapes_per_category
-            assert self.LBA_n_primitive_shapes_per_category == 2 
-        #if LBA_inverted_loss is True: 
-        #self.cur_margin = 1.0 
-        #else: 
-        self.cur_margin = 1.0
-
-        ################################################
-        ## should we specify the self.text_norm_weight and self.shape_norm_weight 
-        ## here we add a penalty on the embedding norms  
-        ################################################
         
-        self.LBA_max_norm = LBA_max_norm
-        self.text_norm_weight = 2.0 #as used in the official implementation
-        self.shape_norm_weight = 2.0 ##as used in the official implementation
+        
+        self.cur_margin = 0.5       
+        #Penalize Text and shape embedding norms if encoder do not normalize 
+        #self.LBA_max_norm = LBA_max_norm
+        #self.text_norm_weight = 2.0 #as used in the official implementation
+        #self.shape_norm_weight = 2.0 ##as used in the official implementation
         
         #self.trip_loss = TripletLoss(margin = 0.5)
+
+    def euclidean_distance(self, X, Y):
+        p1 = torch.sum(X**2,axis=1).unsqueeze(1)
+        p2 = torch.sum(Y**2,axis=1)
+        p3 = -2* torch.mm(X,Y.transpose(0,1))
+        return torch.sqrt(p1+p2+p3+1e-8)
+        
+
+
     def pairwise_distances(self,x, y=None):
         x_norm = (x**2).sum(1).view(-1, 1)
 
@@ -268,81 +266,24 @@ class Metric_Loss(nn.Module):
 
 
     
-    def triplet_loss(self,input_tensor, name='triplet_loss', margin=1):
     
-        
-            # Song et al., Deep Metric Learning via Lifted Structured Feature Embedding
-            # Define feature X \in \mathbb{R}^{N \times C}
-        X = input_tensor
-        m = margin
-
-        # Compute the pairwise distance
-        Xe = X.unsqueeze(1)#tf.expand_dims(X, 1)
-        
-        
-        Dsq = torch.sum(torch.square(Xe - Xe.permute(1, 0, 2)),2)#tf.reduce_sum(tf.square(Xe - tf.transpose(Xe, (1, 0, 2))), 2)
-        D = torch.sqrt(Dsq + 1e-8)
-        mD = m - D
-
-        # Compute the loss
-        # Assume that the input data is aligned in a way that two consecutive data form a pair
-        batch_size= X.size()[0]#X.get_shape().as_list()
-
-        # L_{ij} = \log (\sum_{i, k} exp\{m - D_{ik}\} + \sum_{j, l} exp\{m - D_{jl}\}) + D_{ij}
-        # L = \frac{1}{2|P|}\sum_{(i,j)\in P} \max(0, J_{i,j})^2
-        J_all = []
-        for pair_ind in range(batch_size // 2):
-            i = pair_ind * 2
-            j = i + 1
-            ind_rest = np.hstack([np.arange(0, pair_ind * 2),
-                                  np.arange(pair_ind * 2 + 2, batch_size)])
-
-            inds = [[i, k] for k in ind_rest]
-            inds.extend([[j, l] for l in ind_rest])
-
-            J_ij = torch.max(mD[inds]+D[[i,j]])#tf.reduce_max(tf.gather_nd(mD, inds)) + tf.gather_nd(D, [[i, j]])
-            J_all.append(J_ij)
-
-        J_all = torch.stack(J_all)#tf.convert_to_tensor(J_all)
-        #loss = tf.divide(tf.reduce_mean(tf.square(tf.maximum(J_all, 0))), 2.0, name='metric_loss')
-        
-        
-         
-        #J_max,_ = torch.max(J_all,0)
-        loss = torch.div(torch.mean(torch.square(J_all)),2.0)
-        #tf.losses.add_loss(loss)
-        return loss
 
 
-    def smoothed_metric_loss(self, input_tensor, margin=1.,similarity='dot'): 
+    def smoothed_metric_loss(self, input_tensor, margin=0.5,similarity='dot'): 
         """
          Song et al., Deep Metric Learning via Lifted Structured Feature Embedding
         input_tensor: size: N x emb_size 
         """ 
        
-        #FOR SAJAD : 
-        # CHANGE MARGIN TO EITHER 1.0 OR 0.5
-        # CHANGE D = D/128 or D = 1.0 - D
+        
 
         X = input_tensor # N x emb_size 
         m = self.cur_margin
 
-        #if(similarity != 'dot'):
-            #mahanaobis distance instead of simple dot product
-            #D = self.mahalanobis(X,X)
-            #expmD = torch.exp(m - D)
-            #magnitude = (input_tensor ** 2).sum(1).expand(self.batch_size, self.batch_size)
-            #squared_matrix = input_tensor.mm(torch.t(input_tensor))
-            #D = F.relu(magnitude + torch.t(magnitude) - 2 * squared_matrix).sqrt()#mahalanobis_distances
-            #expmD = torch.exp(m - D)
-        #else:
-            #normalize X for each of the embeddings
-             
-        #Xe = X.unsqueeze(1)
-        #t = torch.matmul(Xe,Xe.permute(1, 0, 2))
             
-        X = F.normalize(X, p=2, dim=1)
-        D = torch.mm(X,X.transpose(0, 1))#self.pairwise_distances(X,X)#nn.CosineSimilarity(dim=1, eps=1e-6)#
+        #X = F.normalize(X, p=2, dim=1)
+        #D = self.pairwise_distances(X,X)#self.euclidean_distance(X,X)
+        D = torch.mm(X,X.transpose(0, 1))##nn.CosineSimilarity(dim=1, eps=1e-6)#
         
         #D /= 128 #if not normalized in encoder
         #D = 1.0 - D
@@ -429,34 +370,67 @@ class Metric_Loss(nn.Module):
         #T-S Loss
         metric_st_loss = self.smoothed_metric_loss(embeddings,self.cur_margin)#self.triplet_loss(embeddings)#
         
-        
+        #metric_ss_loss = self.smoothed_metric_loss(shape_embeddings,self.cur_margin)
         
 
-        Total_loss = metric_tt_loss +  metric_st_loss
+        Total_loss = metric_tt_loss + 2.* metric_st_loss
         #Total_loss_with_norm = Total_loss + self.text_norm_weight * unweighted_txt_loss + self.shape_norm_weight * unweighted_shape_loss
 
         
-       
+        #text_norms = torch.norm(text_embeddings, p=2, dim=1)
+        #unweighted_txt_loss = torch.mean(F.relu(text_norms - self.LBA_max_norm))
+        #shape_norms = torch.norm(shape_embeddings_rep, p=2, dim=1)
+        #unweighted_shape_loss = torch.mean(F.relu(shape_norms - self.LBA_max_norm))
+        #Total_loss_with_norm = Total_loss + self.text_norm_weight * unweighted_txt_loss + self.shape_norm_weight * unweighted_shape_loss
         
        
-        return Total_loss 
+        return Total_loss #Total_loss_with_norm#
 
 """
-def euclidean_distance(self, X, Y):
-        p1 = torch.sum(X**2,axis=1).unsqueeze(1)
-        p2 = torch.sum(Y**2,axis=1)
-        p3 = -2* torch.mm(X,Y.transpose(0,1))
-        return torch.sqrt(p1+p2+p3+1e-8)
-        #m, p = X.size() 
-        #n, p = Y.size() 
-        #X_exp = torch.stack([X]*n).transpose(0,1)
-        #Y_exp = torch.stack([Y]*m)
-        #dist = torch.sum((X_exp-Y_exp)**2,2).squeeze() # size: m x n 
-        #dist = (dist+1e-8).sqrt_() # applies inplace sqrt 
-        #return dist
+
 """
 #Regulization via norm of weights... (perhaps not needed in the case of metric learning)
-#text_norms = torch.norm(text_embeddings, p=2, dim=1)
-#unweighted_txt_loss = torch.mean(F.relu(text_norms - self.LBA_max_norm))
-#shape_norms = torch.norm(shape_embeddings_rep, p=2, dim=1)
-#unweighted_shape_loss = torch.mean(F.relu(shape_norms - self.LBA_max_norm))
+"""
+def triplet_loss(self,input_tensor, name='triplet_loss', margin=1.):
+    
+        
+            # Song et al., Deep Metric Learning via Lifted Structured Feature Embedding
+            # Define feature X 
+        X = input_tensor
+        m = margin
+
+        # Compute the pairwise distance
+        Xe = X.unsqueeze(1)#tf.expand_dims(X, 1)
+        
+        
+        Dsq = torch.sum(torch.square(Xe - Xe.permute(1, 0, 2)),2)#tf.reduce_sum(tf.square(Xe - tf.transpose(Xe, (1, 0, 2))), 2)
+        D = torch.sqrt(Dsq + 1e-8)
+        mD = m - D
+
+        # Compute the loss
+        # Assume that the input data is aligned in a way that two consecutive data form a pair
+        batch_size= X.size()[0]#X.get_shape().as_list()
+
+        # L_{ij} = 
+        for pair_ind in range(batch_size // 2):
+            i = pair_ind * 2
+            j = i + 1
+            ind_rest = np.hstack([np.arange(0, pair_ind * 2),
+                                  np.arange(pair_ind * 2 + 2, batch_size)])
+
+            inds = [[i, k] for k in ind_rest]
+            inds.extend([[j, l] for l in ind_rest])
+
+            J_ij = torch.max(mD[inds]+D[[i,j]])#tf.reduce_max(tf.gather_nd(mD, inds)) + tf.gather_nd(D, [[i, j]])
+            J_all.append(J_ij)
+
+        J_all = torch.stack(J_all)#tf.convert_to_tensor(J_all)
+        #loss = tf.divide(tf.reduce_mean(tf.square(tf.maximum(J_all, 0))), 2.0, name='metric_loss')
+        
+        
+         
+        #J_max,_ = torch.max(J_all,0)
+        loss = torch.div(torch.mean(torch.square(J_all)),2.0)
+        #tf.losses.add_loss(loss)
+        return loss
+"""

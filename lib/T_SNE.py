@@ -11,7 +11,7 @@ sys.path.append("..")
 from config import cfg
 import matplotlib.image as mpimg
 
-def plot_manifold(Embeddings,Shapes):
+def plot_TSNE(Embeddings,Shapes):
 
 	
 
@@ -35,21 +35,39 @@ def plot_manifold(Embeddings,Shapes):
 
 if __name__ == "__main__":
 	
+	
 
-	embeddings_trained = utils.open_pickle('../text_and_shape.p')
+	embeddings_trained = utils.open_pickle('../EMBEDDINGS/METRIC_ONLY/text_and_shape.p')
 	embeddings, model_ids = utils.create_embedding_tuples(embeddings_trained,embedd_type='text__')
 	model_ids = np.array(model_ids)
-	#indices = np.random.choice(np.arange(len(embeddings)),size=20,replace=False)
+
+	embeddings_trained_2 = utils.open_pickle('../EMBEDDINGS/METRIC_TST/text_and_shape.p')
+	embeddings_2, model_ids_2 = utils.create_embedding_tuples(embeddings_trained_2,embedd_type='text__')
+	model_ids_2 = np.array(model_ids_2)
+
+	indices = np.random.choice(np.arange(len(embeddings)),size=150,replace=False)
+	assert len(embeddings) == len(embeddings_2)
 	#print(indices)
-	embeddings = embeddings[0:100]
+	embeddings = embeddings[indices]
+	embeddings_2 = embeddings_2[indices]
 	#print(embeddings)
-	model_ids = model_ids[0:100]
+	model_ids = model_ids[indices]
+	model_ids_2 = model_ids_2[indices]
+
 	
 	Shapes = []
 	for id_ in model_ids:
 		pic = cfg.DIR.RGB_PNG_PATH % (id_,id_)
 		img = mpimg.imread(pic)
 		Shapes.append(img)
-	plot_manifold(embeddings,Shapes)
+	plot_TSNE(embeddings,Shapes)
+
+	input()
+	Shapes = []
+	for id_ in model_ids_2:
+		pic = cfg.DIR.RGB_PNG_PATH % (id_,id_)
+		img = mpimg.imread(pic)
+		Shapes.append(img)
+	plot_TSNE(embeddings_2,Shapes)
         
 

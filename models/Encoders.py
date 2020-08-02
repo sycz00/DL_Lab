@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 import torch.nn.functional as F 
-#L2 regulization can be added in the optimizer by adding weight_decay:)
+
 
 class CNNRNNTextEncoder(nn.Module):
 
@@ -33,13 +33,7 @@ class CNNRNNTextEncoder(nn.Module):
         )
 
     def compute_sequence_length(self, caption_batch):
-        """
-        caption_batch: Wrapped in a variable, size: B x C batch, B is batch size, C is max caption lengths, 0 means padding
-            a non-zero positive value indicates a word index 
-        return:
-            seq_length_variable: variable of size batch_size representing the length of each caption in 
-            in the current batch 
-        """
+        
         seq_length_variable = torch.gt(caption_batch, 0).sum(dim=1)
         seq_length_variable = seq_length_variable.long()
         return seq_length_variable
@@ -53,21 +47,16 @@ class CNNRNNTextEncoder(nn.Module):
         
         
         x, _ = self.f5(x)
-        #print("kk:",k.size())
-        #print(x.size())
-        #x = x.permute(1,0,2).contiguous() # for flatting 
-        #print(x.size())
-        #x = x.view(x.size(0), -1)
-        #print(x.size())
+        
         masks = (seq_len-1).unsqueeze(0).unsqueeze(2).expand(max_seq_len, x.size(1), x.size(2))
         x = x.gather(0, masks)[0]
         #x = x.squeeze(0)
         x = self.classifier(x)
         #norm = x.norm(dim=1, p=2, keepdim=True)
         #x = x.div(norm.expand_as(x))
-        #if(self.normalize):
+        
         #return F.normalize(x, p=2, dim=1)
-        #else:
+    
         return x
 
 
@@ -112,5 +101,5 @@ class ShapeEncoder(nn.Module):
         #return F.normalize(x, p=2, dim=1)
         #norm = x.norm(dim=1, p=2, keepdim=True)
         #x = x.div(norm.expand_as(x))
-        #else:
+        
         return x

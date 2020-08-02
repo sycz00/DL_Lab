@@ -7,7 +7,7 @@ import time
 import collections
 import datetime 
 import torch
-from render import render_model_id #lib.render import render_model_id 
+from lib.render import render_model_id #lib.render import render_model_id 
 import sys
 sys.path.append("..")
 from config import cfg

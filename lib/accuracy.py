@@ -63,6 +63,9 @@ def _compute_nearest_neighbors_cosine(fit_embeddings_matrix, query_embeddings_ma
         indices = final_indices
     return indices
 
+
+
+
 def acc_test(indices,labels,n_neighbors,num_embeddings,num_true=1):
     
     num_correct = 0
@@ -78,9 +81,6 @@ def acc_test(indices,labels,n_neighbors,num_embeddings,num_true=1):
         if(counts >= num_true):
             all_counts += 1
 
-        
-            
-    
     return all_counts / num_embeddings#np.mean(bb)#
 
 def compute_metrics(dataset, embeddings_dict, n_neighbors=20,nm=1,metric='minkowski', concise=False):
