@@ -31,8 +31,8 @@ from models.Encoders import CNNRNNTextEncoder, ShapeEncoder
 
 	
 def create_embeddings_pickle(text_encoder, shape_encoder,opts,shape_raw,shape_mod,text_raw,text_mod):
-	#text_encoder.load_state_dict(torch.load('MODELS/not_norm_metric_tst/txt_enc_acc.pth'))
-	#shape_encoder.load_state_dict(torch.load('MODELS/not_norm_metric_tst/shape_enc_acc.pth'))
+	#text_encoder.load_state_dict(torch.load('MODELS/METRIC_and_TST/txt_enc_acc.pth'))
+	#shape_encoder.load_state_dict(torch.load('MODELS/METRIC_and_TST/shape_enc_acc.pth'))
 
 	text_encoder.load_state_dict(torch.load('MODELS/METRIC_ONLY/txt_enc_acc.pth'))
 	shape_encoder.load_state_dict(torch.load('MODELS/METRIC_ONLY/shape_enc_acc.pth'))
@@ -66,8 +66,8 @@ def create_embeddings_pickle(text_encoder, shape_encoder,opts,shape_raw,shape_mo
 
 
 def retrieval(text_encoder,shape_encoder,ret_dict,opts,ret_type='text_to_shape'):
-	#text_encoder.load_state_dict(torch.load('MODELS/not_norm_metric_tst/txt_enc_acc.pth'))
-	#shape_encoder.load_state_dict(torch.load('MODELS/not_norm_metric_tst/shape_enc_acc.pth'))
+	#text_encoder.load_state_dict(torch.load('MODELS/METRIC_and_TST/txt_enc_acc.pth'))
+	#shape_encoder.load_state_dict(torch.load('MODELS/METRIC_and_TST/shape_enc_acc.pth'))
 
 	text_encoder.load_state_dict(torch.load('MODELS/METRIC_ONLY/txt_enc_acc.pth'))
 	shape_encoder.load_state_dict(torch.load('MODELS/METRIC_ONLY/shape_enc_acc.pth'))
