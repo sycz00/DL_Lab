@@ -23,7 +23,7 @@
 
 
 ## TSNE plots show that shape and colors share similarities in embedding space
-![TSNE](TSNE plots/METRIC_ONLY_COMPARABLE.png)
+![TSNE Plot](TSNE/METRIC_ONLY_COMPARABLE.png)
 
 
 
