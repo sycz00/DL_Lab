@@ -22,11 +22,11 @@
 ```
 
 
-## TSNE plots show that shape and colors share similarities in embedding space
+## TSNE plots show that shape and colors share similarities in the embedding-space
 ![TSNE Plot](TSNE/METRIC_ONLY_COMPARABLE.png)
 
 
 
 
 ### Dataset
-- [x] [Dataset](http://text2shape.stanford.edu/](http://text2shape.stanford.edu/)
+- [x] [Dataset](http://text2shape.stanford.edu/]
